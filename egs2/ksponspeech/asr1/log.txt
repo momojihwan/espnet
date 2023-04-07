@@ -1,0 +1,15 @@
+2023-03-27T14:10:34 (asr.sh:267:main) ./asr.sh --lang kr --train_set train --valid_set dev --test_sets eval_clean eval_other --max_wav_duration 30 --asr_task asr_transducer --lm_config conf/train_lm_transformer.yaml --asr_config conf/tuning/transducer/train_asr_conformer-rnnt.yaml --inference_config conf/decode_asr.yaml --nbpe 2309 --lm_train_text data/train/text --bpe_train_text data/train/text --bpe_nlsyms [unk]
+2023-03-27T14:10:35 (asr.sh:1027:main) Stage 10: ASR collect stats: train_set=dump/raw/train, valid_set=dump/raw/dev
+2023-03-27T14:10:35 (asr.sh:1077:main) Generate 'exp/asr_stats_raw_kr_bpe2309/run.sh'. You can resume the process from stage 10 using this script
+2023-03-27T14:10:35 (asr.sh:1081:main) ASR collect-stats started... log: 'exp/asr_stats_raw_kr_bpe2309/logdir/stats.*.log'
+2023-03-27T14:39:08 (asr.sh:1627:main) Skip the uploading stage
+2023-03-27T14:39:08 (asr.sh:1679:main) Skip the uploading to HuggingFace stage
+2023-03-27T14:39:08 (asr.sh:1682:main) Successfully finished. [elapsed=1714s]
+2023-03-27T14:46:22 (asr.sh:267:main) ./asr.sh --lang kr --train_set train --valid_set dev --test_sets eval_clean eval_other --max_wav_duration 30 --asr_task asr_transducer --lm_config conf/train_lm_transformer.yaml --asr_config conf/tuning/transducer/train_asr_conformer-rnnt.yaml --inference_config conf/decode_asr.yaml --nbpe 2309 --lm_train_text data/train/text --bpe_train_text data/train/text --bpe_nlsyms [unk]
+2023-03-27T14:46:22 (asr.sh:1139:main) Stage 11: ASR Training: train_set=dump/raw/train, valid_set=dump/raw/dev
+2023-03-27T14:46:22 (asr.sh:1228:main) Generate 'exp/asr_train_asr_conformer-rnnt_raw_kr_bpe2309/run.sh'. You can resume the process from stage 11 using this script
+2023-03-27T14:46:22 (asr.sh:1232:main) ASR training started... log: 'exp/asr_train_asr_conformer-rnnt_raw_kr_bpe2309/train.log'
+2023-03-27T14:47:56 (asr.sh:267:main) ./asr.sh --lang kr --train_set train --valid_set dev --test_sets eval_clean eval_other --max_wav_duration 30 --asr_task asr_transducer --lm_config conf/train_lm_transformer.yaml --asr_config conf/tuning/transducer/train_asr_conformer-rnnt.yaml --inference_config conf/decode_asr.yaml --nbpe 2309 --lm_train_text data/train/text --bpe_train_text data/train/text --bpe_nlsyms [unk]
+2023-03-27T14:47:56 (asr.sh:1139:main) Stage 11: ASR Training: train_set=dump/raw/train, valid_set=dump/raw/dev
+2023-03-27T14:47:56 (asr.sh:1228:main) Generate 'exp/asr_train_asr_conformer-rnnt_raw_kr_bpe2309/run.sh'. You can resume the process from stage 11 using this script
+2023-03-27T14:47:56 (asr.sh:1232:main) ASR training started... log: 'exp/asr_train_asr_conformer-rnnt_raw_kr_bpe2309/train.log'

@@ -15,7 +15,7 @@ stage=1
 stop_stage=100
 
 #data
-datadir=/ocean/projects/cis210027p/shared/corpora/KsponSpeech/KsponSpeech/
+datadir=/DB/KsponSpeech/
 # KsponSpeech
 #  |_ KsponSpeech_01/
 #  |_ KsponSpeech_02/
