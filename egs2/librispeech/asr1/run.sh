@@ -9,9 +9,10 @@ train_set="train_960"
 valid_set="dev"
 test_sets="test_clean test_other dev_clean dev_other"
 
-asr_config=conf/train_asr_conformer.yaml
+asr_config=conf/tuning/transducer/train_conformer-rnnt.yaml
+asr_task="asr_transducer"
 lm_config=conf/tuning/train_lm_transformer2.yaml
-inference_config=conf/decode_asr.yaml
+inference_config=conf/tuning/transducer/decode_asr_transducer.yaml
 
 ./asr.sh \
     --lang en \
@@ -20,6 +21,7 @@ inference_config=conf/decode_asr.yaml
     --max_wav_duration 30 \
     --speed_perturb_factors "0.9 1.0 1.1" \
     --asr_config "${asr_config}" \
+    --asr_task "${asr_task}" \
     --lm_config "${lm_config}" \
     --inference_config "${inference_config}" \
     --train_set "${train_set}" \
