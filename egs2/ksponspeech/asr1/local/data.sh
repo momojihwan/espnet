@@ -5,6 +5,10 @@ set -e
 set -u
 set -o pipefail
 
+. ./path.sh || exit 1;
+. ./cmd.sh || exit 1;
+. ./db.sh || exit 1;
+
 log() {
     local fname=${BASH_SOURCE[1]##*/}
     echo -e "$(date '+%Y-%m-%dT%H:%M:%S') (${fname}:${BASH_LINENO[0]}:${FUNCNAME[1]}) $*"
@@ -15,7 +19,11 @@ stage=1
 stop_stage=100
 
 #data
+<<<<<<< HEAD
 datadir=/DB/KsponSpeech/
+=======
+datadir=${KSPONSPEECH}
+>>>>>>> upstream/master
 # KsponSpeech
 #  |_ KsponSpeech_01/
 #  |_ KsponSpeech_02/
