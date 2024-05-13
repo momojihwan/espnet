@@ -54,6 +54,7 @@ class JointNetwork(torch.nn.Module):
             joint_out: Joint output state sequences. (B, T, U, D_out)
 
         """
+
         joint_out = self.joint_activation(self.lin_enc(enc_out) + self.lin_dec(dec_out))
 
         return self.lin_out(joint_out)

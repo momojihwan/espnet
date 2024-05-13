@@ -18,6 +18,8 @@ from espnet2.layers.abs_normalize import AbsNormalize
 from espnet2.torch_utils.device_funcs import force_gatherable
 from espnet2.train.abs_espnet_model import AbsESPnetModel
 
+import matplotlib.pyplot as plt
+
 if V(torch.__version__) >= V("1.6.0"):
     from torch.cuda.amp import autocast
 else:
@@ -417,10 +419,9 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
             torch.nn.functional.dropout(encoder_out, p=self.ctc_dropout_rate)
         )
         ctc_in = torch.log_softmax(ctc_in.transpose(0, 1), dim=-1)
-
         target_mask = target != 0
         ctc_target = target[target_mask].cpu()
-
+        
         with torch.backends.cudnn.flags(deterministic=True):
             loss_ctc = torch.nn.functional.ctc_loss(
                 ctc_in,
@@ -467,3 +468,4 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
         loss_lm = loss_lm.masked_fill(ignore, 0).sum() / batch_size
 
         return loss_lm
+

@@ -538,6 +538,8 @@ class ASRTask(AbsTask):
         # 4. Encoder
         encoder_class = encoder_choices.get_class(args.encoder)
         encoder = encoder_class(input_size=input_size, **args.encoder_conf)
+        if isinstance(encoder, FairSeqWav2Vec2Encoder):
+            normalize = None
 
         # 5. Post-encoder block
         # NOTE(kan-bayashi): Use getattr to keep the compatibility

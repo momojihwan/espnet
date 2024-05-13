@@ -24,8 +24,8 @@ min() {
 SECONDS=0
 
 # General configuration
-stage=1              # Processes starts from the specified stage.
-stop_stage=10000     # Processes is stopped at the specified stage.
+stage=11              # Processes starts from the specified stage.
+stop_stage=1000     # Processes is stopped at the specified stage.
 skip_stages=         # Spicify the stage to be skipped
 skip_data_prep=false # Skip data preparation stages.
 skip_train=false     # Skip training stages.
@@ -129,9 +129,9 @@ inference_tag=    # Suffix to the result dir for decoding.
 inference_config= # Config for decoding.
 inference_args=   # Arguments for decoding, e.g., "--lm_weight 0.1".
                   # Note that it will overwrite args in inference config.
-inference_lm=valid.loss.ave.pth       # Language model path for decoding.
+inference_lm=valid.loss.ave_10best.pth       # Language model path for decoding.
 inference_ngram=${ngram_num}gram.bin
-inference_asr_model=valid.acc.ave.pth # ASR model path for decoding.
+inference_asr_model=latest.pth # ASR model path for decoding.
                                       # e.g.
                                       # inference_asr_model=train.loss.best.pth
                                       # inference_asr_model=3epoch.pth

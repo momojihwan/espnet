@@ -3,9 +3,12 @@ from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
+import numpy as np
+
+np.set_printoptions(threshold=np.inf, linewidth=np.inf)
 from packaging.version import parse as V
 from typeguard import check_argument_types
-
+import matplotlib.pyplot as plt
 from espnet2.asr.ctc import CTC
 from espnet2.asr.decoder.abs_decoder import AbsDecoder
 from espnet2.asr.encoder.abs_encoder import AbsEncoder
@@ -112,7 +115,7 @@ class ESPnetASRModel(AbsESPnetModel):
         self.use_transducer_decoder = joint_network is not None
 
         self.error_calculator = None
-
+        
         if self.use_transducer_decoder:
             self.decoder = decoder
             self.joint_network = joint_network
@@ -376,12 +379,13 @@ class ESPnetASRModel(AbsESPnetModel):
         with autocast(False):
             # 1. Extract feats
             feats, feats_lengths = self._extract_feats(speech, speech_lengths)
-
+    
             # 2. Data augmentation
             if self.specaug is not None and self.training:
                 feats, feats_lengths = self.specaug(feats, feats_lengths)
 
             # 3. Normalization for feature: e.g. Global-CMVN, Utterance-CMVN
+            
             if self.normalize is not None:
                 feats, feats_lengths = self.normalize(feats, feats_lengths)
 
@@ -581,6 +585,9 @@ class ESPnetASRModel(AbsESPnetModel):
         ys_pad_lens: torch.Tensor,
     ):
         # Calc CTC loss
+        # log_sof = self.ctc.softmax(encoder_out)
+        # arg = self.ctc.argmax(encoder_out)
+
         loss_ctc = self.ctc(encoder_out, encoder_out_lens, ys_pad, ys_pad_lens)
 
         # Calc CER using CTC
