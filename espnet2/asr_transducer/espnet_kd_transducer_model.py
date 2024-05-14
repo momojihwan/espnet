@@ -223,7 +223,7 @@ class ESPnetASRKDTransducerModel(AbsESPnetModel):
                 teacher_encoder_out.unsqueeze(2), teacher_decoder_out.unsqueeze(1)
             )
 
-        self.train()
+        # self.train()
 
         # 1. Encoder
         encoder_out, encoder_out_lens = self.encode(speech, speech_lengths)

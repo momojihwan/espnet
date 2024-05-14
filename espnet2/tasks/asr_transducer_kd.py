@@ -26,12 +26,12 @@ from espnet2.asr_transducer.joint_network import JointNetwork
 from espnet2.layers.abs_normalize import AbsNormalize
 from espnet2.layers.global_mvn import GlobalMVN
 from espnet2.layers.utterance_mvn import UtteranceMVN
-from espnet2.tasks.abs_task import AbsTask
+from espnet2.tasks.abs_kd_task import AbsTask
 from espnet2.text.phoneme_tokenizer import g2p_choices
 from espnet2.train.class_choices import ClassChoices
 from espnet2.train.collate_fn import CommonCollateFn
 from espnet2.train.preprocessor import CommonPreprocessor
-from espnet2.train.trainer import Trainer
+from espnet2.train.kd_trainer import Trainer
 from espnet2.utils.get_default_kwargs import get_default_kwargs
 from espnet2.utils.nested_dict_action import NestedDictAction
 from espnet2.utils.types import float_or_none, int_or_none, str2bool, str_or_none
@@ -360,11 +360,12 @@ class ASRTransducerTask(AbsTask):
         return retval
 
     @classmethod
-    def build_model(cls, args: argparse.Namespace) -> ESPnetASRKDTransducerModel:
+    def build_model(cls, teacher_model, args: argparse.Namespace) -> ESPnetASRKDTransducerModel:
         """Required data depending on task mode.
 
         Args:
             cls: ASRTransducerTask object.
+            teacher_model: Teacher model.
             args: Task arguments.
 
         Return:
@@ -439,31 +440,6 @@ class ASRTransducerTask(AbsTask):
             **args.joint_network_conf,
         )
         
-        # 7-1. Build Teacher model
-        if args.teacher_path is not None:
-            teacher_encoder = Encoder(input_size, **args.teacher_encoder_conf)
-            teacher_decoder_class = decoder_choices.get_class(args.decoder)
-            teacher_decoder = teacher_decoder_class(vocab_size, **args.decoder_conf)
-
-            teacher_joint_network = JointNetwork(
-                vocab_size,
-                encoder_output_size,
-                decoder_output_size,
-                **args.joint_network_conf,
-            )
-            teacher_model = ESPnetASRTransducerModel(
-                vocab_size=vocab_size,
-                token_list=token_list,
-                frontend=frontend,
-                specaug=specaug,
-                normalize=normalize,
-                encoder=teacher_encoder,
-                decoder=teacher_decoder,
-                joint_network=joint_network,
-                **args.model_conf,    
-            )
-            teacher_model.load_state_dict(torch.load(args.teacher_path))
-
         # 7. Build model
         model = ESPnetASRKDTransducerModel(
             vocab_size=vocab_size,
