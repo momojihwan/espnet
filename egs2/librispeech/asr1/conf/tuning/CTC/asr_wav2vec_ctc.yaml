@@ -1,0 +1,69 @@
+# This configuration requires 4 GPUs with 32GB memory
+batch_type: numel
+batch_bins: 34000000
+accum_grad: 4
+max_epoch: 60
+patience: none
+init: none
+best_model_criterion:
+-   - valid
+    - acc
+    - max
+val_scheduler_criterion:
+    - valid
+    - loss
+keep_nbest_models: 10
+
+freeze_param: [
+    "encoder.encoders.mask_emb", "encoder.encoders.feature_extractor",
+    "encoder.encoders.post_extract_proj", "encoder.encoders.quantizer",
+    "encoder.encoders.project_q", "encoder.encoders.encoder.pos_conv",
+    "encoder.encoders.encoder.layers.0", "encoder.encoders.encoder.layers.1", "encoder.encoders.encoder.layers.2",
+    "encoder.encoders.encoder.layers.3", "encoder.encoders.encoder.layers.4", "encoder.encoders.encoder.layers.5",
+    "encoder.encoders.encoder.layers.6", "encoder.encoders.encoder.layers.7", "encoder.encoders.encoder.layers.8",
+    "encoder.encoders.encoder.layers.9", "encoder.encoders.encoder.layers.10", "encoder.encoders.encoder.layers.11",
+    "encoder.encoders.encoder.layers.12", "encoder.encoders.encoder.layers.13", "encoder.encoders.encoder.layers.14",
+    "encoder.encoders.encoder.layers.15", "encoder.encoders.encoder.layers.16", "encoder.encoders.encoder.layers.17",
+    "encoder.encoders.encoder.layers.18", "encoder.encoders.encoder.layers.19", "encoder.encoders.encoder.layers.20",
+    "encoder.encoders.encoder.layers.21", "encoder.encoders.encoder.layers.22",
+    "encoder.encoders.encoder.layer_norm", "encoder.encoders.layer_norm",
+]
+
+input_size: 2048
+encoder: wav2vec2
+encoder_conf:
+    output_size: 2048
+    normalize_before: false
+    freeze_finetune_updates: 100000
+    model_type: pretraining
+    w2v_url: https://dl.fbaipublicfiles.com/fairseq/wav2vec/wav2vec_vox_new.pt
+    w2v_path: ./downloads/wav2vec_pretrained_models/
+
+model_conf:
+    ctc_weight: 1.0
+    lsm_weight: 0.1
+    length_normalized_loss: false
+    extract_feats_in_collect_stats: false   # Note: "False" means during collect stats (stage 10), generating dummy stats files rather than extract_feats by forward frontend.
+
+
+# frontend_conf:
+#   n_fft: 512
+#   hop_length: 160
+
+optim: adam
+optim_conf:
+    lr: 0.00003
+    betas: [0.9, 0.98]
+scheduler: warmuplr
+scheduler_conf:
+    warmup_steps: 25000
+    
+unused_parameters: true
+
+frontend: null
+
+normalize: null
+
+specaug: null
+
+

@@ -1,7 +1,7 @@
 # general
 batch_type: numel
-batch_bins: 1800000
-accum_grad: 16
+batch_bins: 4600000
+accum_grad: 8
 max_epoch: 25 # 100 produces better results.
 patience: none
 init: none
@@ -32,7 +32,7 @@ encoder_conf:
       pos_wise_dropout_rate: 0.1
       att_dropout_rate: 0.1
       conv_mod_kernel_size: 31
-      num_blocks: 18
+      num_blocks: 12
 
 decoder: rnn
 decoder_conf:
@@ -44,7 +44,7 @@ decoder_conf:
     embed_dropout_rate: 0.2
 
 joint_network_conf:
-    joint_space_size: 640
+    joint_space_size: 512
 
 # optimizer
 optim: adam

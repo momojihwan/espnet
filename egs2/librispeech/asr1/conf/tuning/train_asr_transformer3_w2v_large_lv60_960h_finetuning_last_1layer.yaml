@@ -33,7 +33,7 @@ encoder_conf:
     normalize_before: false
     freeze_finetune_updates: 100000
     w2v_url: https://dl.fbaipublicfiles.com/fairseq/wav2vec/wav2vec2_vox_960h_new.pt
-    w2v_dir_path: ./downloads/wav2vec_pretrained_models
+    w2v_path: ./downloads/wav2vec_pretrained_models
 
 decoder: transformer
 decoder_conf:
