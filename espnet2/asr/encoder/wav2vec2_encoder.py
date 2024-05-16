@@ -24,7 +24,7 @@ class FairSeqWav2Vec2Encoder(AbsEncoder):
         input_size: input dim
         output_size: dimension of attention
         w2v_url: url to Wav2Vec2.0 pretrained model
-        w2v_dir_path: directory to download the Wav2Vec2.0 pretrained model.
+        w2v_path: directory to download the Wav2Vec2.0 pretrained model.
         normalize_before: whether to use layer_norm before the first block
         finetune_last_n_layers: last n layers to be finetuned in Wav2Vec2.0
                                 0 means to finetune every layer if freeze_w2v=False.
@@ -33,8 +33,9 @@ class FairSeqWav2Vec2Encoder(AbsEncoder):
     def __init__(
         self,
         input_size: int,
+        model_type: str,
         w2v_url: str,
-        w2v_dir_path: str = "./",
+        w2v_path: str = "./",
         output_size: int = 256,
         normalize_before: bool = False,
         freeze_finetune_updates: int = 0,
@@ -53,13 +54,13 @@ class FairSeqWav2Vec2Encoder(AbsEncoder):
                 )
                 raise e
 
-        self.w2v_model_path = download_w2v(w2v_url, w2v_dir_path)
+        self.w2v_model_path = download_w2v(w2v_url, w2v_path)
 
         self._output_size = output_size
 
         models, _, _ = fairseq.checkpoint_utils.load_model_ensemble_and_task(
             [self.w2v_model_path],
-            arg_overrides={"data": w2v_dir_path},
+            arg_overrides={"data": w2v_path},
         )
         model = models[0]
 
@@ -86,6 +87,7 @@ class FairSeqWav2Vec2Encoder(AbsEncoder):
             self.output_layer = torch.nn.Sequential(
                 torch.nn.Linear(model.cfg.encoder_embed_dim, output_size),
             )
+            
         else:
             self.output_layer = None
 

@@ -57,6 +57,7 @@ class NoamLR(_LRScheduler, AbsBatchStepScheduler):
 
     def get_lr(self):
         step_num = self.last_epoch + 1
+        
         return [
             lr
             * self.model_size**-0.5

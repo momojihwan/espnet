@@ -1,4 +1,4 @@
-"""Normalization modules for X-former blocks."""
+"""Normalization modules for Transducer."""
 
 from typing import Dict, Optional, Tuple
 
