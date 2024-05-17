@@ -118,6 +118,12 @@ class ASRTransducerTask(AbsTask):
             help="Teacher model checkpoint path.",
         )
         group.add_argument(
+            "--student_checkpoint",
+            type=str_or_none,
+            default=None,
+            help="Student model checkpoint path.",
+        )
+        group.add_argument(
             "--kd_weight",
             type=int_or_none,
             default=0.3,

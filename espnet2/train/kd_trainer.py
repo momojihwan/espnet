@@ -146,23 +146,38 @@ class Trainer:
         scaler: Optional[GradScaler],
         ngpu: int = 0,
         strict: bool = True,
+        flag: bool = False,
     ):
         states = torch.load(
             checkpoint,
             map_location=f"cuda:{torch.cuda.current_device()}" if ngpu > 0 else "cpu",
         )
-        model.load_state_dict(states["model"], strict=strict)
-        reporter.load_state_dict(states["reporter"])
-        for optimizer, state in zip(optimizers, states["optimizers"]):
-            optimizer.load_state_dict(state)
-        for scheduler, state in zip(schedulers, states["schedulers"]):
-            if scheduler is not None:
-                scheduler.load_state_dict(state)
-        if scaler is not None:
-            if states["scaler"] is None:
-                logging.warning("scaler state is not found")
-            else:
-                scaler.load_state_dict(states["scaler"])
+        if flag:
+            model.load_state_dict(states["model"], strict=not strict)
+            
+            for k, p in model.named_parameters():
+                if k in states.keys():
+                    p.copy_(states[k])
+
+            # model_dict = model.state_dict()
+            
+            # pretrained_dict = {k: v for k, v in states["model"].items() if k in model_dict}
+            # model_dict.update(pretrained_dict)
+            # model.load_state_dict(pretrained_dict, strict=False)
+        else:
+            model.load_state_dict(states["model"], strict=strict)
+                
+            reporter.load_state_dict(states["reporter"])
+            for optimizer, state in zip(optimizers, states["optimizers"]):
+                optimizer.load_state_dict(state)
+            for scheduler, state in zip(schedulers, states["schedulers"]):
+                if scheduler is not None:
+                    scheduler.load_state_dict(state)
+            if scaler is not None:
+                if states["scaler"] is None:
+                    logging.warning("scaler state is not found")
+                else:
+                    scaler.load_state_dict(states["scaler"])
 
         logging.info(f"The training was resumed using {checkpoint}")
 
@@ -171,6 +186,7 @@ class Trainer:
         cls,
         model: AbsESPnetModel,
         teacher_model: AbsESPnetModel,
+        student_checkpoint: Union[str, Path],
         optimizers: Sequence[torch.optim.Optimizer],
         schedulers: Sequence[Optional[AbsScheduler]],
         train_iter_factory: AbsIterFactory,
@@ -216,17 +232,31 @@ class Trainer:
         if use_lora and lora is None:
             raise RuntimeError("Requiring loralib. Do 'pip install loralib'")
 
-        if trainer_options.resume and (output_dir / "checkpoint.pth").exists():
+        if student_checkpoint is not None and not (output_dir / "checkpoint.pth").exists():
             cls.resume(
-                checkpoint=output_dir / "checkpoint.pth",
-                model=model,
-                optimizers=optimizers,
-                schedulers=schedulers,
-                reporter=reporter,
-                scaler=scaler,
-                ngpu=trainer_options.ngpu,
-                strict=not use_lora,
+                    checkpoint=student_checkpoint,
+                    model=model,
+                    optimizers=optimizers,
+                    schedulers=schedulers,
+                    reporter=reporter,
+                    scaler=scaler,
+                    ngpu=trainer_options.ngpu,
+                    strict=not use_lora,
+                    flag=True,
             )
+        else:
+            if trainer_options.resume and (output_dir / "checkpoint.pth").exists():
+                cls.resume(
+                    checkpoint=output_dir / "checkpoint.pth",
+                    model=model,
+                    optimizers=optimizers,
+                    schedulers=schedulers,
+                    reporter=reporter,
+                    scaler=scaler,
+                    ngpu=trainer_options.ngpu,
+                    strict=not use_lora,
+                    flag=False,
+                )
 
         start_epoch = reporter.get_epoch() + 1
         if start_epoch == trainer_options.max_epoch + 1:

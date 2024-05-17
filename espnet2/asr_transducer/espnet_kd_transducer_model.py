@@ -202,7 +202,6 @@ class ESPnetASRKDTransducerModel(AbsESPnetModel):
         batch_size = speech.shape[0]
         text = text[:, : text_lengths.max()]
 
-        self.teacher_model.eval()
         with torch.no_grad():
             # 1-1. Teacher Encoder
             teacher_encoder_out, teacher_encoder_out_lens = self.teacher_encode(speech, speech_lengths)
@@ -538,7 +537,7 @@ class ESPnetASRKDTransducerModel(AbsESPnetModel):
         
         loss_kd = self.kl_loss(s_in, t_in)
 
-        return loss_kd
+        return loss_kd / 100
 
     def _calc_k2_transducer_pruned_loss(
         self,
