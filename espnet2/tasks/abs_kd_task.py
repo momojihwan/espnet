@@ -1446,6 +1446,7 @@ class AbsTask(ABC):
             cls.trainer.run(
                 model=model,
                 teacher_model=teacher_model,
+                student_checkpoint=args.student_checkpoint,
                 optimizers=optimizers,
                 schedulers=schedulers,
                 train_iter_factory=train_iter_factory,
