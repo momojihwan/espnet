@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Set bash to 'debug' mode, it will exit on :
+# -e 'error', -u 'undefined variable', -o ... 'error in pipeline', -x 'print commands',
+set -e
+set -u
+set -o pipefail
+
+train_set="train_clean_100"
+valid_set="dev"
+test_sets="test_clean test_other"
+
+asr_task="asr_transducer_itp"
+asr_config="conf/tuning/transducer/KD/train_asr_conformer-rnnt-streaming-kd-itp.yaml"
+inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
+
+./asr.sh \
+    --lang en \
+    --ngpu 1 \
+    --nj 16 \
+    --inference_nj 16 \
+    --nbpe 2048 \
+    --max_wav_duration 30 \
+    --speed_perturb_factors "0.9 1.0 1.1" \
+    --asr_task "${asr_task}" \
+    --audio_format "flac.ark" \
+    --feats_type raw \
+    --use_lm false \
+    --asr_config "${asr_config}" \
+    --inference_config "${inference_config}" \
+    --train_set "${train_set}" \
+    --valid_set "${valid_set}" \
+    --test_sets "${test_sets}" \
+    --lm_train_text "data/${train_set}/text" \
+    --bpe_train_text "data/${train_set}/text" "$@" \
+    --display_hypotheses false
