@@ -3,7 +3,7 @@
 import argparse
 import logging
 import os
-from typing import Callable, Collection, Dict, List, Optional, Tuple, Union
+from typing import Callable, Collection, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -21,13 +21,12 @@ from espnet2.asr_transducer.decoder.rwkv_decoder import RWKVDecoder
 from espnet2.asr_transducer.decoder.stateless_decoder import StatelessDecoder
 from espnet2.asr_transducer.encoder.encoder import Encoder
 from espnet2.asr_transducer.espnet_transducer_model import ESPnetASRTransducerModel
-from espnet2.asr_transducer.espnet_kd_transducer_model import ESPnetASRKDTransducerModel
+from espnet2.asr_transducer.espnet_ot_transducer_model import ESPnetASROTTransducerModel
 from espnet2.asr_transducer.joint_network import JointNetwork
 from espnet2.layers.abs_normalize import AbsNormalize
-from espnet2.train.abs_espnet_model import AbsESPnetModel
 from espnet2.layers.global_mvn import GlobalMVN
 from espnet2.layers.utterance_mvn import UtteranceMVN
-from espnet2.tasks.abs_kd_task import AbsTask
+from espnet2.tasks.abs_itp_task import AbsTask
 from espnet2.text.phoneme_tokenizer import g2p_choices
 from espnet2.train.class_choices import ClassChoices
 from espnet2.train.collate_fn import CommonCollateFn
@@ -136,6 +135,13 @@ class ASRTransducerTask(AbsTask):
             default=1.0,
             help="The temperature scaling vaule.",
         )
+        group.add_argument(
+            "--inter_weight",
+            type=float_or_none,
+            default=0.5,
+            help="The temperature scaling vaule.",
+        )
+        
         group.add_argument(
             "--input_size",
             type=int_or_none,
@@ -367,11 +373,7 @@ class ASRTransducerTask(AbsTask):
         return retval
 
     @classmethod
-    def build_model(
-        cls, 
-        teacher_model: Union[None, AbsESPnetModel],
-        args: argparse.Namespace
-    ) -> ESPnetASRKDTransducerModel:
+    def build_model(cls, teacher_model, args: argparse.Namespace) -> ESPnetASRITPTransducerModel:
         """Required data depending on task mode.
 
         Args:
@@ -452,7 +454,7 @@ class ASRTransducerTask(AbsTask):
         )
         
         # 7. Build model
-        model = ESPnetASRKDTransducerModel(
+        model = ESPnetASROTTransducerModel(
             vocab_size=vocab_size,
             token_list=token_list,
             frontend=frontend,
@@ -464,6 +466,7 @@ class ASRTransducerTask(AbsTask):
             teacher_model=teacher_model,
             kd_weight=args.kd_weight,
             temp_tau=args.temp_tau,
+            inter_weight=args.inter_weight,
             **args.model_conf,
         )
 
