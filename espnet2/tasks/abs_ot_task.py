@@ -2058,7 +2058,7 @@ class AbsTask(ABC):
         with config_file.open("r", encoding="utf-8") as f:
             args = yaml.safe_load(f)
         args = argparse.Namespace(**args)
-        model = ASRTransducerTask.build_model(args)
+        model = cls.build_model(args)
         if not isinstance(model, AbsESPnetModel):
             raise RuntimeError(
                 f"model must inherit {AbsESPnetModel.__name__}, but got {type(model)}"
@@ -2076,23 +2076,10 @@ class AbsTask(ABC):
                 #   in PyTorch<=1.4
                 device = f"cuda:{torch.cuda.current_device()}"
             try:
-                pretrained_model_state_dict = torch.load(model_file, map_location=device)
-                model_state_dict = model.state_dict()
-                for n, p in pretrained_model_state_dict.items():
-                    if n in model_state_dict:
-                        if model_state_dict[n].shape == p.shape:
-                            model_state_dict[n].copy_(p)
-                        else:
-                            print(f"Skipping {n} due to shape mismatch.")
-                    else:
-                        print(f"Skipping {n} as it does not exist in the target model.")
-                
-                model.load_state_dict(model_state_dict)
-
-                # model.load_state_dict(
-                #     torch.load(model_file, map_location=device),
-                #     strict=not use_lora,
-                # )
+                model.load_state_dict(
+                    torch.load(model_file, map_location=device),
+                    strict=not use_lora,
+                )
             except RuntimeError:
                 # Note(simpleoier): the following part is to be compatible with
                 #   pretrained model using earlier versions before `0a625088`
