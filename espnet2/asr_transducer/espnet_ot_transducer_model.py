@@ -449,28 +449,35 @@ class ESPnetASROTTransducerModel(AbsESPnetModel):
 
         return encoder_out, encoder_out_lens
 
-    def compute_cost_matrix(x, y):
-        x_col = x.unsqueeze(1)
-        y_lin = y.unsqueeze(0)
-        cost_matrix = torch.cdist(x_col, y_lin, p=2)
-        return cost_matrix
+    def compute_cost_matrix(self, x, y):
+        B, T, U, V = x.size()
+        cost_matrices = []
+        for i in range(B):
+            x_flat = x[i].view(T * U, V)
+            y_flat = y[i].view(T * U, V)
+            cost_matrix = torch.cdist(x_flat, y_flat, p=2)
+            cost_matrices.append(cost_matrix)
+        
+        return torch.stack(cost_matrices)
 
-    def sinkhorn_knpp(a, b, cost_matrix, reg, max_iter=1000, tol=1e-9):
-
-        u = torch.ones_like(a)
-        v = torch.ones_like(b)
+    def sinkhorn_knopp(self, a, b, cost_matrix, reg, max_iter=100, tol=0.05):
+        B, n, _ = cost_matrix.size()
+        u = torch.ones((B, n, 1), device=cost_matrix.device)
+        v = torch.ones((B, n, 1), device=cost_matrix.device)
 
         K = torch.exp(-cost_matrix / reg)
 
         for _ in range(max_iter):
-            u_prev = u
+            u_prev = u.clone()
             u = a / (K @ v)
-            v = b / (K.t() @ u)
+            v = b / (K.transpose(-1, -2) @ u)
 
             if torch.max(torch.abs(u - u_prev)) < tol:
                 break
 
-        transport_matrix = torch.diag(u) @ K @ torch.diag(v)
+        u = u.view(B, n)
+        v = v.view(B, n)
+        transport_matrix = torch.diag_embed(u) @ K @ torch.diag_embed(v)
         return transport_matrix
 
         
@@ -493,21 +500,32 @@ class ESPnetASROTTransducerModel(AbsESPnetModel):
         # p1 = torch.softmax(torch.tensor(logits1), dim=-1).numpy()
         # p2 = torch.softmax(torch.tensor(logits2), dim=-1).numpy()
 
-        # transport_matrix = ot.emb(p1, p2, ot.dist(p1, p2))
+        # transport_matrix = ot.emd(p1, p2, ot.dist(p1, p2))
 
         # opt_logits = torch.tensor(transport_matrix @ logits2)
 
         p1 = torch.softmax(joint_out, dim=-1)
         p2 = torch.softmax(teacher_joint_out, dim=-1)
+        device = p1.device
 
-        # Calculate cost matrix
-        cost_matrix = compute_cost_matrix(p1, p2)
+        B, T, U, V = p1.size()
 
-        # Calculate optimal transport (Sinkhorn-knopp algorithm)
-        transport_matrix = sinkhorn_knpp(p1, p2, cost_matrix, 0.01).to(p1.device)
+        with torch.no_grad():
+            # Calculate cost matrix
+            cost_matrix = self.compute_cost_matrix(p1, p2)
 
-        opt_logits = transport_matrix @ teacher_joint_out
+            a = torch.ones((B, T * U), device=device) / (T * U)
+            b = torch.ones((B, T * U), device=device) / (T * U)
 
+            # Calculate optimal transport (Sinkhorn-knopp algorithm)
+            transport_matrix = torch.zeros_like(cost_matrix)
+            
+            for i in range(B):
+                transport_matrix[i] = self.sinkhorn_knopp(a[i:i+1].unsqueeze(-1), b[i:i+1].unsqueeze(-1), cost_matrix[i:i+1], 0.05)
+            
+        joint_flat = joint_out.view(B, T * U, V)
+        opt_logits_flat = torch.bmm(transport_matrix, joint_flat)
+        opt_logits = opt_logits_flat.view(B, T, U, V)
         return opt_logits
 
 

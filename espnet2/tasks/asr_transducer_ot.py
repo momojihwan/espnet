@@ -26,7 +26,7 @@ from espnet2.asr_transducer.joint_network import JointNetwork
 from espnet2.layers.abs_normalize import AbsNormalize
 from espnet2.layers.global_mvn import GlobalMVN
 from espnet2.layers.utterance_mvn import UtteranceMVN
-from espnet2.tasks.abs_itp_task import AbsTask
+from espnet2.tasks.abs_ot_task import AbsTask
 from espnet2.text.phoneme_tokenizer import g2p_choices
 from espnet2.train.class_choices import ClassChoices
 from espnet2.train.collate_fn import CommonCollateFn
@@ -373,7 +373,7 @@ class ASRTransducerTask(AbsTask):
         return retval
 
     @classmethod
-    def build_model(cls, teacher_model, args: argparse.Namespace) -> ESPnetASRITPTransducerModel:
+    def build_model(cls, teacher_model, args: argparse.Namespace) -> ESPnetASROTTransducerModel:
         """Required data depending on task mode.
 
         Args:

@@ -9,15 +9,14 @@ train_set="train_clean_100"
 valid_set="dev"
 test_sets="test_clean test_other"
 
-asr_task="asr_transducer"
-asr_config="conf/tuning/transducer/train_asr_conformer-statelesst-streaming.yaml"
+asr_task="asr_transducer_ot"
+asr_config="conf/tuning/transducer/KD/train_asr_conformer-rnnt-streaming-kd-ot.yaml"
 inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
 
 ./asr.sh \
     --lang en \
-    --ngpu 1 \
+    --ngpu 4 \
     --nj 16 \
-    
     --inference_nj 16 \
     --nbpe 2048 \
     --max_wav_duration 30 \
@@ -33,4 +32,4 @@ inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
     --test_sets "${test_sets}" \
     --lm_train_text "data/${train_set}/text" \
     --bpe_train_text "data/${train_set}/text" "$@" \
-    --display_hypotheses false
+    # --display_hypotheses false
