@@ -32,4 +32,4 @@ inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
     --test_sets "${test_sets}" \
     --lm_train_text "data/${train_set}/text" \
     --bpe_train_text "data/${train_set}/text" "$@" \
-    --display_hypotheses false
+    # --display_hypotheses false
