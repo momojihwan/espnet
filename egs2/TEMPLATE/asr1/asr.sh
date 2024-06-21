@@ -24,7 +24,7 @@ min() {
 SECONDS=0
 
 # General configuration
-stage=1              # Processes starts from the specified stage.
+stage=11              # Processes starts from the specified stage.
 stop_stage=10000     # Processes is stopped at the specified stage.
 skip_stages=         # Spicify the stage to be skipped
 skip_data_prep=false # Skip data preparation stages.
