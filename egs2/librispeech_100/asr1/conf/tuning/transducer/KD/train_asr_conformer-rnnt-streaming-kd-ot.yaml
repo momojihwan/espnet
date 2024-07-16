@@ -1,14 +1,14 @@
 # general
 batch_type: numel
-batch_bins: 500000
+batch_bins: 5000000
 accum_grad: 16
 max_epoch: 100 # 100 produces better results.
 patience: none
 init: none
 num_att_plot: 0
-student_checkpoint: /home/mozi/Workspace/espnet/egs2/librispeech_100/asr1/exp/asr_train_asr_conformer-rnnt-streaming_raw_en_bpe2048_sp/checkpoint.pth
-teacher_path: /home/mozi/Workspace/espnet/egs2/librispeech_100/asr1/exp/asr_train_asr_conformer-rnnt_raw_en_bpe2048_sp/valid.loss.ave_10best.pth
-kd_weight: 0.3
+student_checkpoint: /home/user/Workspace/espnet/egs2/librispeech_100/asr1/exp/asr_train_asr_conformer-rnnt-streaming_raw_en_bpe2048_sp/checkpoint.pth
+teacher_path: /home/user/Workspace/espnet/egs2/librispeech_100/asr1/exp/asr_train_asr_conformer-rnnt_raw_en_bpe2048_sp/valid.loss.ave_10best.pth
+kd_weight: 0.9
 temp_tau: 1.0
 
 model_conf:
@@ -79,10 +79,10 @@ joint_network_conf:
 optim: adam
 optim_conf:
     lr: 0.001
-    weight_decay: 0.000001
+    weight_decay: 0.00001
 scheduler: warmuplr
 scheduler_conf:
-    warmup_steps: 15000
+    warmup_steps: 1500
 
 # # maximization optimizer
 # optim2: adam
