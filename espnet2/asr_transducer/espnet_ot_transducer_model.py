@@ -10,6 +10,10 @@ import torch.nn.functional as F
 from packaging.version import parse as V
 from typeguard import check_argument_types
 
+import matplotlib.pyplot as plt
+import numpy as np
+
+
 from espnet2.asr.frontend.abs_frontend import AbsFrontend
 from espnet2.asr.specaug.abs_specaug import AbsSpecAug
 from espnet2.asr_transducer.decoder.abs_decoder import AbsDecoder
@@ -126,6 +130,8 @@ class ESPnetASROTTransducerModel(AbsESPnetModel):
         self.use_auxiliary_ctc = auxiliary_ctc_weight > 0
         self.use_auxiliary_lm_loss = auxiliary_lm_loss_weight > 0
         self.kl_loss = torch.nn.KLDivLoss(reduction="batchmean", log_target=True)
+
+
         self.inter_weight = inter_weight
 
         if use_k2_pruned_loss:
@@ -452,35 +458,89 @@ class ESPnetASROTTransducerModel(AbsESPnetModel):
         return encoder_out, encoder_out_lens
 
     def compute_cost_matrix(self, x, y):
-        B, T, U, V = x.size()
+        B, T, V = x.size()
         cost_matrices = []
         for i in range(B):
-            x_flat = x[i].view(T * U, V)
-            y_flat = y[i].view(T * U, V)
-            cost_matrix = torch.cdist(x_flat, y_flat, p=2)
+            cost_matrix = torch.cdist(x[i], y[i], p=2)
             cost_matrices.append(cost_matrix)
         
         return torch.stack(cost_matrices)
 
-    def sinkhorn_knopp(self, a, b, cost_matrix, reg, max_iter=100, tol=0.05):
-        B, n, _ = cost_matrix.size()
-        u = torch.ones((B, n, 1), device=cost_matrix.device)
-        v = torch.ones((B, n, 1), device=cost_matrix.device)
+    # def sinkhorn_knopp(self, a, b, cost_matrix, reg, max_iter=100, tol=0.05):
+    #     B, n, _ = cost_matrix.size()
+    #     u = torch.ones((B, n, 1), device=cost_matrix.device)
+    #     v = torch.ones((B, n, 1), device=cost_matrix.device)
 
-        K = torch.exp(-cost_matrix / reg)
+    #     K = torch.exp(-cost_matrix / reg)
+
+    #     for _ in range(max_iter):
+    #         u_prev = u.clone()
+    #         u = a / (K @ v)
+    #         v = b / (K.transpose(-1, -2) @ u)
+
+    #         if torch.max(torch.abs(u - u_prev)) < tol:
+    #             break
+
+    #     u = u.view(B, n)
+    #     v = v.view(B, n)
+    #     transport_matrix = torch.diag_embed(u) @ K @ torch.diag_embed(v)
+    #     return transport_matrix
+    
+    # def kl_divergence(self, p, q):
+    #     """
+    #     Compute KL divergence between two probability distributions.
+        
+    #     Args:
+    #         p: Tensor of shape [B, T, V] representing student probabilities.
+    #         q: Tensor of shape [B, T, V] representing teacher probabilities.
+        
+    #     Returns:
+    #         cost_matrix: Tensor of shape [B, T, T] representing the KL divergence cost matrix.
+    #     """
+    #     # Ensure p and q are in log-space for numerical stability
+    #     log_p = torch.log(p + 1e-8)  # Adding small value for numerical stability
+    #     log_q = torch.log(q + 1e-8)
+        
+    #     kl_div = p * (log_p - log_q)
+    #     kl_div_sum = kl_div.sum(dim=-1)  # Sum over the V dimension to get [B, T]
+        
+    #     # Expanding dimensions to create pairwise cost matrix [B, T, T]
+    #     cost_matrix = kl_div_sum.unsqueeze(2) + kl_div_sum.unsqueeze(1)
+    #     return cost_matrix
+    
+    def sinkhorn_knopp(self, cost_matrix, epsilon=1e-3, max_iter=100):
+        B, T, _ = cost_matrix.size()
+
+        K = torch.exp(-cost_matrix / epsilon).clone()  # Gibbs kernel, avoid inplace modification
+        K[K != K] = 0  # Replace NaNs with 0
+        u = torch.ones((B, T), device=cost_matrix.device)  # [B, T]
+        v = torch.ones((B, T), device=cost_matrix.device)  # [B, T]
 
         for _ in range(max_iter):
-            u_prev = u.clone()
-            u = a / (K @ v)
-            v = b / (K.transpose(-1, -2) @ u)
+            u_prev = u
+            v_prev = v
 
-            if torch.max(torch.abs(u - u_prev)) < tol:
+            u = 1.0 / (K @ v.unsqueeze(-1)).squeeze(-1)  # Update u
+            v = 1.0 / (K.transpose(-1, -2) @ u.unsqueeze(-1)).squeeze(-1)  # Update v
+
+            # Numerical stability check
+            if torch.any(torch.isnan(u)) or torch.any(torch.isnan(v)):
+                u = u_prev
+                v = v_prev
                 break
 
-        u = u.view(B, n)
-        v = v.view(B, n)
-        transport_matrix = torch.diag_embed(u) @ K @ torch.diag_embed(v)
+        transport_matrix = u.unsqueeze(-1) * K * v.unsqueeze(-2)
         return transport_matrix
+    
+    def wasserstein_distance(self, p, q, transport_matrix):
+
+        return torch.sum(transport_matrix * torch.cdist(p, q, p=2))
+
+    def compute_wasserstein_distance(self, transport_matrix, cost_matrix):
+        # Compute Wasserstein distance as the sum of element-wise products of transport and cost matrices
+        wasserstein_dist = (transport_matrix * cost_matrix).sum(dim=(1, 2))  # [B] -> Scalar
+        
+        return wasserstein_dist.mean()
 
         
     def optimal_transport_alignment(
@@ -496,62 +556,86 @@ class ESPnetASROTTransducerModel(AbsESPnetModel):
 
         """
         
-        # logits1 = joint_out.detach().cpu().numpy()
-        # logits2 = teacher_joint_out.detach().cpu().numpy()
+        B, T, U, V = teacher_joint_out.shape
+    
+        teacher_logits_t = teacher_joint_out.mean(dim=2)  # [B, T, V]
+        student_logits_t = joint_out.mean(dim=2)  # [B, T, V]
+    
+        teacher_probs = F.softmax(teacher_logits_t, dim=-1)  # [B, T, V]
+        student_probs = F.softmax(student_logits_t, dim=-1)  # [B, T, V]
+        
+        cost_matrix = self.compute_cost_matrix(student_probs, teacher_probs) # [B, T, T]
+        transport_matrix = self.sinkhorn_knopp(cost_matrix) # [B, T, T]
 
-        # p1 = torch.softmax(torch.tensor(logits1), dim=-1).numpy()
-        # p2 = torch.softmax(torch.tensor(logits2), dim=-1).numpy()
+        wd_loss = self.compute_wasserstein_distance(transport_matrix, cost_matrix)
 
-        # transport_matrix = ot.emd(p1, p2, ot.dist(p1, p2))
+        return wd_loss / B
+    
+    # def optimal_transport_alignment(
+    #     self,
+    #     joint_out: torch.Tensor,
+    #     teacher_joint_out: torch.Tensor,
+    # ) -> torch.Tensor:
+    #     """Calculate the differences between teacher and student model's logits
 
-        # opt_logits = torch.tensor(transport_matrix @ logits2)
+    #     Args:
+    #         joint_out: student model's joint output(logits). (B, T, U, V)
+    #         teacher_joint_out: teacher model's joint output(logits). (B, T, U, V)
+
+    #     """
+        
+    #     # logits1 = joint_out.detach().cpu().numpy()
+    #     # logits2 = teacher_joint_out.detach().cpu().numpy()
+
+    #     # p1 = torch.softmax(torch.tensor(logits1), dim=-1).numpy()
+    #     # p2 = torch.softmax(torch.tensor(logits2), dim=-1).numpy()
+
+    #     # transport_matrix = ot.emd(p1, p2, ot.dist(p1, p2))
+
+    #     # opt_logits = torch.tensor(transport_matrix @ logits2)
 
         
-        s_t = min(joint_out.size(1), self.slice_time)
-        s_l = min(joint_out.size(2), self.slice_label)
+    #     s_t = min(joint_out.size(1), self.slice_time)
+    #     s_l = min(joint_out.size(2), self.slice_label)
 
-        p1 = torch.softmax(joint_out[:, :s_t, :s_l, :], dim=-1)
-        p2 = torch.softmax(teacher_joint_out[:, :s_t, :s_l, :], dim=-1)
+    #     p1 = torch.softmax(joint_out[:, :s_t, :s_l, :], dim=-1)
+    #     p2 = torch.softmax(teacher_joint_out[:, :s_t, :s_l, :], dim=-1)
         
-        device = p1.device
+    #     device = p1.device
 
-        B, t, u, V = p1.size()
+    #     B, t, u, V = p1.size()
 
-        with torch.no_grad():
-            # Calculate cost matrix
-            cost_matrix = self.compute_cost_matrix(p1, p2)
+    #     # Calculate cost matrix
+    #     cost_matrix = self.compute_cost_matrix(p1, p2)  # [B, T*U, T*U]
 
-            a = torch.ones((B, t * u), device=device) / (t * u)
-            b = torch.ones((B, t * u), device=device) / (t * u)
+    #     a = torch.ones((B, t * u), device=device) / (t * u)
+    #     b = torch.ones((B, t * u), device=device) / (t * u)
 
-            # Calculate optimal transport (Sinkhorn-knopp algorithm)
-            transport_matrix = torch.zeros_like(cost_matrix)
-            
-            for i in range(B):
-                transport_matrix[i] = self.sinkhorn_knopp(a[i:i+1].unsqueeze(-1), b[i:i+1].unsqueeze(-1), cost_matrix[i:i+1], 0.05)
-<<<<<<< HEAD
-            
-        joint_flat = joint_out.view(B, T * U, V)
-=======
-
-        joint_flat = joint_out[:, :t, :u, :].contiguous().view(B, t * u, V)
+    #     # Calculate optimal transport (Sinkhorn-knopp algorithm)
+    #     transport_matrix = torch.zeros_like(cost_matrix)
         
->>>>>>> ce37c137459a8f759cc5907867ca2a45479858f9
-        opt_logits_flat = torch.bmm(transport_matrix, joint_flat)
-        opt_logits = opt_logits_flat.view(B, t, u, V)
+    #     for i in range(B):
+    #         transport_matrix[i] = self.sinkhorn_knopp(a[i:i+1].unsqueeze(-1), b[i:i+1].unsqueeze(-1), cost_matrix[i:i+1], 0.05)
 
-        op_s_in = F.log_softmax(joint_out[:, :t, :u, :] / self.temp_tau, dim=-1)
-        op_t_in = F.log_softmax(opt_logits / self.temp_tau, dim=-1)
-
-        kd_s_in = F.log_softmax(joint_out[:, t:, u:, :] / self.temp_tau, dim=-1)
-        kd_t_in = F.log_softmax(teacher_joint_out[:, t:, u:, :] / self.temp_tau, dim=-1)
+    #     teacher_joint_flat = teacher_joint_out[:, :t, :u, :].contiguous().view(B, t * u, V)
+    #     teacher_joint_flat_prob = torch.softmax(teacher_joint_flat, dim=-1)
         
-        loss_kd_1 = self.kl_loss(op_s_in, op_t_in)
-        loss_kd_2 = self.kl_loss(kd_s_in, kd_t_in)
+    #     opt_logits_flat = torch.bmm(transport_matrix, teacher_joint_flat_prob)
+    #     opt_alignment = opt_logits_flat.view(B, t, u, V)
 
-        loss_kd = loss_kd_1 + loss_kd_2 
+    #     op_s_in = F.log_softmax(joint_out[:, :t, :u, :] / self.temp_tau, dim=-1)
+        
+    #     kd_s_in = F.log_softmax(joint_out[:, t:, u:, :] / self.temp_tau, dim=-1)
+    #     kd_t_in = F.log_softmax(teacher_joint_out[:, t:, u:, :] / self.temp_tau, dim=-1)
+        
+    #     self.visualize_alignment(F.log_softmax(joint_out, dim=-1), F.log_sofmax(teacher_joint_out, dim=-1), opt_alignment.log())
+    #     exit()
+    #     loss_kd_1 = self.kl_loss(op_s_in, opt_alignment.log())
+    #     loss_kd_2 = self.kl_loss(kd_s_in, kd_t_in)
 
-        return loss_kd / 100
+    #     loss_kd = loss_kd_1 + loss_kd_2 
+
+    #     return loss_kd / 100
 
 
     def _extract_feats(

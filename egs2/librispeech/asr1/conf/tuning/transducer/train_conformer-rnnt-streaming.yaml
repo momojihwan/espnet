@@ -1,7 +1,7 @@
 # general
 batch_type: numel
-batch_bins: 7000000
-accum_grad: 4
+batch_bins: 1200000
+accum_grad: 16
 max_epoch: 25 # 100 produces better results.
 patience: none
 init: none
@@ -12,14 +12,13 @@ model_conf:
     auxiliary_ctc_weight: 0.0
     report_cer: True
     report_wer: True
-
+ 
 encoder_conf:
     main_conf:
       pos_wise_act_type: swish
       conv_mod_act_type: swish
       pos_enc_dropout_rate: 0.2
       dynamic_chunk_training: True
-      short_chunk_threshold: 0.75
       short_chunk_size: 25
       num_left_chunks: 4
     input_conf:
@@ -33,28 +32,28 @@ encoder_conf:
       pos_wise_dropout_rate: 0.1
       att_dropout_rate: 0.1
       conv_mod_kernel_size: 31
-      num_blocks: 17
+      num_blocks: 18
 
-decoder: stateless
+decoder: rnn
 decoder_conf:
+    rnn_type: lstm
+    num_layers: 1
     embed_size: 512
+    hidden_size: 512
+    dropout_rate: 0.1
     embed_dropout_rate: 0.2
 
-frontend_conf:
-  n_fft: 512
-  hop_length: 160
-
 joint_network_conf:
-    joint_space_size: 512
+    joint_space_size: 640
 
 # optimizer
 optim: adam
 optim_conf:
-    lr: 0.0015
+    lr: 0.002
     weight_decay: 0.000001
 scheduler: warmuplr
 scheduler_conf:
-    warmup_steps: 25000
+    warmup_steps: 15000
 
 # criterion
 val_scheduler_criterion:
@@ -75,10 +74,11 @@ specaug_conf:
     apply_freq_mask: true
     freq_mask_width_range:
     - 0
-    - 30
+    - 27
     num_freq_mask: 2
     apply_time_mask: true
     time_mask_width_ratio_range:
     - 0.
     - 0.05
     num_time_mask: 5
+

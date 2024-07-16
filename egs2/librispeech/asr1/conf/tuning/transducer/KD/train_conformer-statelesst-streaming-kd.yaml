@@ -1,15 +1,19 @@
-# general
 batch_type: numel
-batch_bins: 7000000
+batch_bins: 3000000
 accum_grad: 4
 max_epoch: 25 # 100 produces better results.
 patience: none
 init: none
 num_att_plot: 0
+student_checkpoint: /home/user/Workspace/espnet/egs2/librispeech/asr1/exp/asr_train_conformer-statelesst-streaming_baseline_sp/checkpoint.pth
+teacher_path: /home/user/Workspace/espnet/egs2/librispeech/asr1/exp/asr_train_conformer-statelesst-non-streaming_baseline_sp/valid.loss.ave_10best.pth
+kd_weight: 0.3
+temp_tau: 1.0
 
 model_conf:
     transducer_weight: 1.0
     auxiliary_ctc_weight: 0.0
+    fastemit_lambda: 0.0
     report_cer: True
     report_wer: True
 
@@ -47,6 +51,7 @@ frontend_conf:
 joint_network_conf:
     joint_space_size: 512
 
+
 # optimizer
 optim: adam
 optim_conf:
@@ -55,6 +60,7 @@ optim_conf:
 scheduler: warmuplr
 scheduler_conf:
     warmup_steps: 25000
+
 
 # criterion
 val_scheduler_criterion:
@@ -82,3 +88,12 @@ specaug_conf:
     - 0.
     - 0.05
     num_time_mask: 5
+    # freq_mask_width_range:
+    # - 0
+    # - 27
+    # num_freq_mask: 2
+    # apply_time_mask: true
+    # time_mask_width_ratio_range:
+    # - 0.
+    # - 40
+    # num_time_mask: 2

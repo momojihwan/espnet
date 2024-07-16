@@ -1,6 +1,6 @@
 # general
 batch_type: numel
-batch_bins: 4600000
+batch_bins: 7000000
 accum_grad: 4
 max_epoch: 25 # 100 produces better results.
 patience: none
@@ -21,7 +21,7 @@ encoder_conf:
       dynamic_chunk_training: False
       short_chunk_threshold: 0.75
       short_chunk_size: 25
-      left_chunk_size: 4
+      num_left_chunks: 4
     input_conf:
       vgg_like: True
     body_conf:
