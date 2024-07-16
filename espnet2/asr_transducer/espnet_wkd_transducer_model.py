@@ -4,16 +4,10 @@ import logging
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple, Union
 
-import ot
 import torch
 import torch.nn.functional as F
-
 from packaging.version import parse as V
 from typeguard import check_argument_types
-
-import matplotlib.pyplot as plt
-import numpy as np
-
 
 from espnet2.asr.frontend.abs_frontend import AbsFrontend
 from espnet2.asr.specaug.abs_specaug import AbsSpecAug
@@ -34,7 +28,7 @@ else:
         yield
 
 
-class ESPnetASROTTransducerModel(AbsESPnetModel):
+class ESPnetASRWKDTransducerModel(AbsESPnetModel):
     """ESPnet2ASRTransducerModel module definition.
 
     Args:
@@ -83,7 +77,6 @@ class ESPnetASROTTransducerModel(AbsESPnetModel):
         use_k2_pruned_loss: bool = False,
         k2_pruned_loss_args: Dict = {},
         warmup_steps: int = 25000,
-        inter_weight: float= 0.5,
         validation_nstep: int = 2,
         fastemit_lambda: float = 0.0,
         auxiliary_ctc_weight: float = 0.0,
@@ -122,9 +115,6 @@ class ESPnetASROTTransducerModel(AbsESPnetModel):
         self.joint_network = joint_network
 
         self.teacher_model = teacher_model
-        self.slice_time = 512
-        self.slice_label = 5
-        self.lambda_pos = 0.1
 
         self.criterion_transducer = None
         self.error_calculator = None
@@ -132,12 +122,6 @@ class ESPnetASROTTransducerModel(AbsESPnetModel):
         self.use_auxiliary_ctc = auxiliary_ctc_weight > 0
         self.use_auxiliary_lm_loss = auxiliary_lm_loss_weight > 0
         self.kl_loss = torch.nn.KLDivLoss(reduction="batchmean", log_target=True)
-        self.gamma = 0.1
-        self.epsilon = 1e-3  # Regularization parameter for Sinkhorn algorithm
-        self.max_iter = 100  # Ma
-        self.chunk_size = 100
-
-        self.inter_weight = inter_weight
 
         if use_k2_pruned_loss:
             self.am_proj = torch.nn.Linear(
@@ -238,6 +222,8 @@ class ESPnetASROTTransducerModel(AbsESPnetModel):
                 teacher_encoder_out.unsqueeze(2), teacher_decoder_out.unsqueeze(1)
             )
 
+        # self.train()
+
         # 1. Encoder
         encoder_out, encoder_out_lens = self.encode(speech, speech_lengths)
 
@@ -271,23 +257,12 @@ class ESPnetASROTTransducerModel(AbsESPnetModel):
                 u_len,
             )
 
-
-        # 4-0. Calculate OT loss
-        loss_kd = self._calc_ot_loss(
-            encoder_out,
-            teacher_encoder_out,
-            decoder_out,
-            teacher_decoder_out,
+        # 4-1. Calculate knowledge distillation loss
+        loss_kd = self._calc_wkd_loss(
+            joint_out,
+            teacher_joint_out
         )
 
-        # 4-0. Calculate differences between teacher and student logits then, maximize the differences
-        # loss_kd = self.optimal_transport_alignment(joint_out, teacher_joint_out)
-
-        # 4-1. Calculate knowledge distillation loss
-        # loss_kd = self._calc_kd_loss(
-        #     joint_out,
-        #     opt_logits
-        # )
         # 5. Auxiliary losses
         loss_ctc, loss_lm = 0.0, 0.0
 
@@ -470,199 +445,6 @@ class ESPnetASROTTransducerModel(AbsESPnetModel):
 
         return encoder_out, encoder_out_lens
 
-    def sinkhorn_knopp(self, cost_matrix):
-        B, N, M = cost_matrix.size()
-
-        K = torch.exp(-cost_matrix / self.epsilon)  # Gibbs kernel
-        print("K1  : ", K)
-        K = K / (torch.sum(K, dim=-1, keepdim=True) + 1e-16)  # Avoid division by zero
-        print("K2  : ", K)
-        u = torch.ones((B, N, 1), device=cost_matrix.device)  # [B, N, 1]
-        v = torch.ones((B, M, 1), device=cost_matrix.device)  # [B, M, 1]
-
-        for _ in range(self.max_iter):
-            u = 1.0 / (K @ v)  # Update u
-            v = 1.0 / (K.transpose(-2, -1) @ u)  # Update v
-
-            # Clipping to avoid NaNs
-            u = torch.clamp(u, min=1e-8, max=1e8)
-            v = torch.clamp(v, min=1e-8, max=1e8)
-
-        transport_matrix = u * K * v.transpose(-2, -1)  # [B, N, M]
-        return transport_matrix
-    
-    def wasserstein_distance(self, p, q, transport_matrix):
-
-        return torch.sum(transport_matrix * torch.cdist(p, q, p=2))
-
-    def compute_wasserstein_distance(self, transport_matrix, cost_matrix):
-        # Compute Wasserstein distance as the sum of element-wise products of transport and cost matrices
-        wasserstein_dist = (transport_matrix * cost_matrix).sum(dim=(1, 2))  # [B] -> Scalar
-        
-        return wasserstein_dist.mean()
-
-    def compute_wasserstein_distance(self, transport_matrix, cost_matrix):
-        # Compute Wasserstein distance as the sum of element-wise products of transport and cost matrices
-        wasserstein_dist = (transport_matrix * cost_matrix).sum(dim=(1, 2))  # [B, N, M] -> [B]
-        return wasserstein_dist.mean()  # Mean over batch
-
-    def compute_ot_loss(self, teacher_out, student_out):
-        B, T_teacher, V_teacher = teacher_out.shape
-        B, T_student, V_student = student_out.shape
-
-        # Positional cost matrix
-        pos_teacher = torch.arange(T_teacher, device=teacher_out.device).view(1, -1, 1).expand(B, -1, T_student)
-        pos_student = torch.arange(T_student, device=student_out.device).view(1, 1, -1).expand(B, T_teacher, -1)
-        # Compute the Euclidean cost matrix
-        cost_matrix_euclidean = torch.cdist(
-            teacher_out.view(B, -1, V_teacher), 
-            student_out.view(B, -1, V_student), p=2
-        )  # [B, T_teacher, T_student]
-        print("cos euc : ", cost_matrix_euclidean.size(), cost_matrix_euclidean)
-        cost_matrix_positional = self.gamma * torch.abs(pos_teacher - pos_student)  # [B, T_teacher, T_student]
-        print("cos pos :", cost_matrix_positional.size(), cost_matrix_positional)
-        # Combine Euclidean and positional cost
-        total_cost_matrix = cost_matrix_euclidean + cost_matrix_positional
-        print("tot cost :", total_cost_matrix.size(), total_cost_matrix)
-        # Apply Sinkhorn-Knopp algorithm
-        transport_matrix = self.sinkhorn_knopp(total_cost_matrix)
-        print("trans : ", transport_matrix.size(), transport_matrix)
-
-        # Compute Wasserstein distance
-        wasserstein_dist = self.compute_wasserstein_distance(transport_matrix, total_cost_matrix)
-        
-        return wasserstein_dist
-        
-    def _calc_ot_loss(self, student_audio_out, teacher_audio_out, student_text_out, teacher_text_out):
-        print("s a : ", student_audio_out.size())
-        print("t a : ", teacher_audio_out.size())
-        print("s t : ", student_text_out.size())
-        print("t t : ", teacher_text_out.size())
-        audio_loss = self.compute_ot_loss(teacher_audio_out, student_audio_out)
-        print("audio : ", audio_loss)
-        text_loss = self.compute_ot_loss(teacher_text_out, student_text_out)
-        print("text : ", text_loss)
-
-        return audio_loss + text_loss
-
-
-
-    # def distance_with_position(self, p, q, positions_p, positions_q):
-    #     euclidean_dist = torch.cdist(p, q, p=2)     # Compute pairwise Euclidean distance
-    #     positions_p = positions_p.float()
-    #     positions_q = positions_q.float()
-    #     position_dist = torch.cdist(positions_p.unsqueeze(-1), positions_q.unsqueeze(-1), p=1)       # Compute position distance
-    #     return euclidean_dist + self.lambda_pos * position_dist
-
-    # def sinkhorn_knopp(self, cost_matrix):
-    #     B, N, _ = cost_matrix.size()
-
-    #     K = torch.exp(-cost_matrix / self.epsilon)  # Gibbs kernel
-    #     K = K / (torch.sum(K, dim=-1, keepdim=True) + 1e-16)  # Avoid division by zero
-    #     u = torch.ones((B, N, 1), device=cost_matrix.device)  # [B, N, 1]
-    #     v = torch.ones((B, N, 1), device=cost_matrix.device)  # [B, N, 1]
-
-    #     for _ in range(self.max_iter):
-    #         u = 1.0 / (K @ v)  # Update u
-    #         v = 1.0 / (K.transpose(-2, -1) @ u)  # Update v
-
-    #         # Clipping to avoid NaNs
-    #         u = torch.clamp(u, min=1e-8, max=1e8)
-    #         v = torch.clamp(v, min=1e-8, max=1e8)
-
-    #     transport_matrix = u * K * v.transpose(-2, -1)  # [B, N, N]
-    #     return transport_matrix
-    # def compute_wasserstein_distance(self, transport_matrix, cost_matrix):
-    #     # Compute Wasserstein distance as the sum of element-wise products of transport and cost matrices
-    #     wasserstein_dist = (transport_matrix * cost_matrix).sum(dim=(1, 2))  # [B, N, N] -> [B]
-    #     return wasserstein_dist.mean()  # Mean over batch
-
-    # def kl_divergence(self, p, q):
-    #     return (p * (p / q).log()).sum(dim=-1)
-
-    # def compute_positional_cost(self, B, T_chunk, U, device):
-    #     # Compute positional cost based on Euclidean distance between positions and absolute difference in time
-    #     pos_x = torch.arange(T_chunk, device=device).view(-1, 1).repeat(1, U)  # [chunk, U]
-    #     pos_y = torch.arange(U, device=device).view(1, -1).repeat(T_chunk, 1)  # [chunk, U]
-
-    #     pos_x_flat = pos_x.view(-1)  # [chunk*U]
-    #     pos_y_flat = pos_y.view(-1)  # [chunk*U]
-
-    #     pos = torch.stack((pos_x_flat, pos_y_flat), dim=1)  # [chunk*U, 2]
-
-    #     # Compute pairwise Euclidean distance for u_i and v_j
-    #     euclidean_cost = torch.cdist(pos.float(), pos.float(), p=2)  # [chunk*U, chunk*U]
-
-    #     # Compute absolute difference in time for s_i and t_j
-    #     time_diff = torch.abs(pos_x_flat[:, None] - pos_x_flat[None, :])  # [chunk*U, chunk*U]
-
-    #     # Combine costs
-    #     position_cost = euclidean_cost + time_diff  # [chunk*U, chunk*U]
-        
-    #     # Repeat for batch dimension
-    #     position_cost = position_cost.view(1, T_chunk * U, T_chunk * U).repeat(B, 1, 1)  # [B, chunk*U, chunk*U]
-
-    #     return position_cost
-
-    # def optimal_transport_alignment(
-    #     self,
-    #     joint_out: torch.Tensor,
-    #     teacher_joint_out: torch.Tensor,
-    # ) -> torch.Tensor:
-    #     """Calculate the differences between teacher and student model's logits
-
-    #     Args:
-    #         joint_out: student model's joint output(logits). (B, T, U, V)
-    #         teacher_joint_out: teacher model's joint output(logits). (B, T, U, V)
-
-    #     """
-        
-    #     B, T, U, V = teacher_joint_out.shape
-
-    #     total_loss = 0
-
-    #     for t_start in range(0, T, self.chunk_size):
-    #         t_end = min(t_start + self.chunk_size, T)
-
-    #         teacher_probs = F.softmax(teacher_joint_out[:, t_start:t_end, :, :], dim=-1)  # [B, chunk, U, V]
-    #         student_probs = F.softmax(joint_out[:, t_start:t_end, :, :], dim=-1)  # [B, chunk, U, V]
-
-    #         # Compute the Euclidean cost matrix for the chunk
-    #         cost_matrix_euclidean = torch.cdist(teacher_probs.view(B, (t_end - t_start) * U, V), 
-    #                                             student_probs.view(B, (t_end - t_start) * U, V), p=2)  # [B, chunk*U, chunk*U]
-    #         print("cost euc : ", cost_matrix_euclidean.size(), cost_matrix_euclidean)
-    #         # Compute the positional cost matrix for the chunk
-    #         position_cost = self.compute_positional_cost(B, t_end - t_start, U, teacher_joint_out.device)  # [B, chunk*U, chunk*U]
-    #         print("pos : ", position_cost.size(), position_cost)
-    #         # Combine the Euclidean cost matrix and positional cost matrix
-    #         cost_matrix = cost_matrix_euclidean + position_cost  # [B, chunk*U, chunk*U]
-    #         print("cost : ", cost_matrix.size(), cost_matrix)
-    #         # Apply Sinkhorn-Knopp algorithm
-    #         transport_matrix = self.sinkhorn_knopp(cost_matrix)
-    #         print("trans : ", transport_matrix.size(), transport_matrix)
-    #         # Compute Wasserstein distance for the chunk
-    #         wasserstein_dist = self.compute_wasserstein_distance(transport_matrix, cost_matrix)
-    #         print("was : ", wasserstein_dist.size(), wasserstein_dist)
-    #         total_loss += wasserstein_dist
-    #     #     # Compute the KL divergence cost matrix
-    #     #     cost_matrix_kl = self.kl_divergence(student_probs, teacher_probs).squeeze()  # [B, T, U]
-    #     #     print("kl : ", cost_matrix_kl.size())
-    #     #     position_cost = self.compute_positional_cost(T, U, teacher_joint_out.device)  # [T, U, T, U]
-    #     #     print("pos : ", position_cost.size())
-    #     #     cost_matrix = cost_matrix_kl.unsqueeze(-1).unsqueeze(-1) + position_cost  # [B, T, U, T, U]
-    #     #     print(" cost : ", cost_matrix.size())
-
-    #     #     # Apply Sinkhorn-Knopp algorithm
-    #     #     transport_matrix = self.sinkhorn_knopp(cost_matrix)
-
-    #     #     # Compute Wasserstein distance
-    #     #     wasserstein_dist = self.compute_wasserstein_distance(transport_matrix, cost_matrix)
-
-    #     #     ot_loss += wasserstein_dist
-    
-    #     return total_loss
-
-
     def _extract_feats(
         self, speech: torch.Tensor, speech_lengths: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -735,7 +517,7 @@ class ESPnetASROTTransducerModel(AbsESPnetModel):
 
         return loss_transducer
 
-    def _calc_kd_loss(
+    def _calc_wkd_loss(
         self,
         joint_out,
         teacher_joint_out,
@@ -750,12 +532,24 @@ class ESPnetASROTTransducerModel(AbsESPnetModel):
             loss_kd: Knowledge distillation loss value.
         """
         
-        s_in = F.log_softmax(joint_out / self.temp_tau, dim=-1)
-        t_in = F.log_softmax(teacher_joint_out / self.temp_tau, dim=-1)
-        
-        loss_kd = self.kl_loss(s_in, t_in)
+        B, T, U, V = teacher_joint_out.shape
+        student_probs = F.softmax(joint_out / self.temp_tau, dim=-1)
+        teacher_probs = F.softmax(teacher_joint_out / self.temp_tau, dim=-1)
 
-        return loss_kd / 100
+        # Get the highest probability values from the teacher's output along the last dimension (V)
+        teacher_best_prob, teacher_best_idx = torch.max(teacher_probs, dim=-1, keepdim=True)  # Shape: [B, T, U, 1]
+        
+        # Calculate importance weights based on the teacher's highest probability value
+        importance_weights = teacher_best_prob / teacher_probs.sum(dim=-1, keepdim=True)  # Shape: [B, T, U, 1]
+        
+        # Calculate the KL divergence loss between student's and teacher's outputs
+        kd_loss = F.kl_div(student_probs.log(), teacher_probs, reduction='none')  # Shape: [B, T, U, V]
+        
+        # Multiply the KL divergence loss by the importance weights
+        weighted_kd_loss = (importance_weights * kd_loss).sum(dim=-1).mean()  # Sum over the vocabulary dimension and mean over the batch
+
+        return weighted_kd_loss 
+        
 
     def _calc_k2_transducer_pruned_loss(
         self,
