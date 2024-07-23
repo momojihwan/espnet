@@ -9,10 +9,9 @@ train_set="train_clean_100"
 valid_set="dev"
 test_sets="test_clean test_other"
 
-asr_task="asr_transducer_wkd"
-asr_config="conf/tuning/transducer/KD/train_asr_conformer-rnnt-streaming-kd.yaml"
+asr_task="asr_transducer_ilm"
+asr_config="conf/tuning/transducer/train_asr_conformer-statelesst-ilm.yaml"
 inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
-asr_exp="exp/asr_train_conformer-statelesst-streaming_baseline_sp_wkd"
 
 ./asr.sh \
     --lang en \
@@ -26,7 +25,6 @@ asr_exp="exp/asr_train_conformer-statelesst-streaming_baseline_sp_wkd"
     --audio_format "flac.ark" \
     --feats_type raw \
     --use_lm false \
-    --asr_exp "${asr_exp}" \
     --asr_config "${asr_config}" \
     --inference_config "${inference_config}" \
     --train_set "${train_set}" \
