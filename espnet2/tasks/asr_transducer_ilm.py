@@ -404,6 +404,13 @@ class ASRTransducerTask(AbsTask):
             **args.decoder_conf,
         )
         decoder_output_size = decoder.output_size
+        # 6-0. Joint Network for OT
+        joint_network_ot = JointNetwork(
+            vocab_size,
+            encoder_output_size,
+            decoder_output_size,
+            **args.joint_network_conf,
+        )
 
         # 6. Joint Network
         joint_network = JointNetwork(
@@ -423,6 +430,7 @@ class ASRTransducerTask(AbsTask):
             encoder=encoder,
             decoder=decoder,
             joint_network=joint_network,
+            joint_network_ot=joint_network_ot,
             **args.model_conf,
         )
 
