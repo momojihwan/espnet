@@ -9,8 +9,8 @@ train_set="train_clean_100"
 valid_set="dev"
 test_sets="test_clean test_other"
 
-asr_task="asr_transducer"
-asr_config="conf/tuning/transducer/train_asr_conformer-statelesst.yaml"
+asr_task="asr_transducer_w2v"
+asr_config="conf/tuning/transducer/train_asr_w2v2-statelesst.yaml"
 inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
 
 ./asr.sh \

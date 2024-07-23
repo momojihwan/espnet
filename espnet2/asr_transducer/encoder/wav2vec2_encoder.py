@@ -73,7 +73,7 @@ class FairSeqWav2Vec2Encoder(torch.nn.Module):
                 raise e
 
         self.encoders = model
-
+    
         self.pretrained_params = copy.deepcopy(model.state_dict())
 
         self.normalize_before = normalize_before
@@ -117,6 +117,7 @@ class FairSeqWav2Vec2Encoder(torch.nn.Module):
             logging.info("Start fine-tuning wav2vec parameters!")
 
         with torch.no_grad() if not ft else contextlib.nullcontext():
+            # print("self : ", self.training)
             enc_outputs = self.encoders(
                 xs_pad,
                 masks,
@@ -131,10 +132,10 @@ class FairSeqWav2Vec2Encoder(torch.nn.Module):
             olens = (~masks).sum(dim=1)  # (B)
         else:
             olens = torch.IntTensor([xs_pad.shape[1]]).repeat(bs).to(xs_pad.device)
-
+        # print("xs : ", xs_pad.size())
         if self.output_layer is not None:
             xs_pad = self.output_layer(xs_pad)
-
+        # print("xs2 : ", xs_pad.size())
         if self.normalize_before:
             xs_pad = self.after_norm(xs_pad)
 

@@ -5,17 +5,17 @@ set -e
 set -u
 set -o pipefail
 
-train_set="train_clean_100"
+train_set="train_960"
 valid_set="dev"
-test_sets="test_clean test_other"
+test_sets="test_clean test_other dev_clean dev_other"
 
-asr_task="asr_transducer"
-asr_config="conf/tuning/transducer/train_asr_conformer-statelesst.yaml"
+asr_task="asr_transducer_ilm"
+asr_config="conf/tuning/transducer/train_asr_conformer-statelesst-ilm.yaml"
 inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
 
 ./asr.sh \
     --lang en \
-    --ngpu 1 \
+    --ngpu 4 \
     --nj 16 \
     --inference_nj 16 \
     --nbpe 2048 \

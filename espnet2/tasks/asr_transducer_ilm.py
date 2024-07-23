@@ -19,10 +19,9 @@ from espnet2.asr_transducer.decoder.mega_decoder import MEGADecoder
 from espnet2.asr_transducer.decoder.rnn_decoder import RNNDecoder
 from espnet2.asr_transducer.decoder.rwkv_decoder import RWKVDecoder
 from espnet2.asr_transducer.decoder.stateless_decoder import StatelessDecoder
-from espnet2.asr_transducer.encoder.wav2vec2_encoder import FairSeqWav2Vec2Encoder
-from espnet2.asr_transducer.espnet_w2v_transducer_model import ESPnetASRTransducerModel
+from espnet2.asr_transducer.encoder.encoder import Encoder
+from espnet2.asr_transducer.espnet_ilm_ot_transducer_model import ESPnetASRTransducerModel
 from espnet2.asr_transducer.joint_network import JointNetwork
-from espnet2.torch_utils.initialize import initialize
 from espnet2.layers.abs_normalize import AbsNormalize
 from espnet2.layers.global_mvn import GlobalMVN
 from espnet2.layers.utterance_mvn import UtteranceMVN
@@ -387,14 +386,14 @@ class ASRTransducerTask(AbsTask):
             specaug = None
 
         # 3. Normalization layer
-        # if args.normalize is not None:
-        #     normalize_class = normalize_choices.get_class(args.normalize)
-        #     normalize = normalize_class(**args.normalize_conf)
-        # else:
-        normalize = None
+        if args.normalize is not None:
+            normalize_class = normalize_choices.get_class(args.normalize)
+            normalize = normalize_class(**args.normalize_conf)
+        else:
+            normalize = None
 
         # 4. Encoder
-        encoder = FairSeqWav2Vec2Encoder(input_size, **args.encoder_conf)
+        encoder = Encoder(input_size, **args.encoder_conf)
         encoder_output_size = encoder.output_size
 
         # 5. Decoder
@@ -429,12 +428,10 @@ class ASRTransducerTask(AbsTask):
 
         # 8. Initialize model
         if args.init is not None:
-            initialize(model, args.init)
-        # if args.init is not None:
-        #     raise NotImplementedError(
-        #         "Currently not supported.",
-        #         "Initialization part will be reworked in a short future.",
-        #     )
+            raise NotImplementedError(
+                "Currently not supported.",
+                "Initialization part will be reworked in a short future.",
+            )
 
         assert check_return_type(model)
 
