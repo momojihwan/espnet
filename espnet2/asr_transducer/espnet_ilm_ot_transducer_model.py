@@ -69,6 +69,7 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
         encoder: Encoder,
         decoder: AbsDecoder,
         joint_network: JointNetwork,
+        joint_network_ot: JointNetwork,
         transducer_weight: float = 1.0,
         ot_weight: float = 0.3,
         use_k2_pruned_loss: bool = False,
@@ -110,6 +111,7 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
         self.encoder = encoder
         self.decoder = decoder
         self.joint_network = joint_network
+        self.joint_network_ot = joint_network_ot
 
         self.criterion_transducer = None
         self.error_calculator = None
@@ -228,17 +230,28 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
             )
         else:
             joint_out = self.joint_network(
+                encoder_out.unsqueeze(2), decoder_out.unsqueeze(1)
+            )
+            joint_ot_out = self.joint_network_ot(
                 new_enc_out.unsqueeze(2), decoder_out.unsqueeze(1)
             )
-
-            loss_trans = self._calc_transducer_loss(
-                new_enc_out,
+            loss_origin_trans = self._calc_transducer_loss(
+                encoder_out,
                 joint_out,
+                target,
+                t_len,
+                u_len,
+            )
+
+            loss_gl_trans = self._calc_transducer_loss(
+                new_enc_out,
+                joint_ot_out,
                 target,
                 new_enc_out_len,
                 u_len,
             )
 
+            loss_trans = (loss_origin_trans + loss_gl_trans) / 2
 
         # 5. Auxiliary losses
         loss_ctc, loss_lm = 0.0, 0.0
