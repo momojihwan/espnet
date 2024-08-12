@@ -9,8 +9,8 @@ train_set="train_clean_100"
 valid_set="dev"
 test_sets="test_clean test_other"
 
-asr_task="asr_transducer_ot"
-asr_config="conf/tuning/transducer/KD/train_asr_conformer-rnnt-streaming-kd-ot.yaml"
+asr_task="asr_transducer_ott"
+asr_config="conf/tuning/transducer/train_asr_conformer-rnnt-ott.yaml"
 inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
 
 ./asr.sh \

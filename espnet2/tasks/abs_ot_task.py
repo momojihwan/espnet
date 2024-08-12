@@ -1224,18 +1224,18 @@ class AbsTask(ABC):
             model = None
             logging.info("Skipping model building in collect_stats stage.")
         else:
-            # 2-1. Build teacher model
-            teacher_model = ASRTransducerTask.build_model(args=args)
-            teacher_model = teacher_model.to(
-                dtype=getattr(torch, args.train_dtype),
-                device="cuda" if args.ngpu > 0 else "cpu",
-            )
-            for k, p in teacher_model.named_parameters():
-                logging.info(f"Teacher model Setting {k}.requires_grad = False")
-                p.requires_grad = False
+            # # 2-1. Build teacher model
+            # teacher_model = ASRTransducerTask.build_model(args=args)
+            # teacher_model = teacher_model.to(
+            #     dtype=getattr(torch, args.train_dtype),
+            #     device="cuda" if args.ngpu > 0 else "cpu",
+            # )
+            # for k, p in teacher_model.named_parameters():
+            #     logging.info(f"Teacher model Setting {k}.requires_grad = False")
+            #     p.requires_grad = False
 
             # 2. Build model
-            model = cls.build_model(teacher_model, args=args)
+            model = cls.build_model(args=args)
             if not isinstance(model, AbsESPnetModel):
                 raise RuntimeError(
                     f"model must inherit {AbsESPnetModel.__name__},"
@@ -1246,7 +1246,7 @@ class AbsTask(ABC):
                 device="cuda" if args.ngpu > 0 else "cpu",
             )
 
-            teacher_model.load_state_dict(torch.load(args.teacher_path))
+            # teacher_model.load_state_dict(torch.load(args.teacher_path))
 
             for t in args.freeze_param:
                 for k, p in model.named_parameters():
@@ -1445,8 +1445,7 @@ class AbsTask(ABC):
             
             cls.trainer.run(
                 model=model,
-                teacher_model=teacher_model,
-                student_checkpoint=args.student_checkpoint,
+                initialized_checkpoint=args.initialized_checkpoint,
                 optimizers=optimizers,
                 schedulers=schedulers,
                 train_iter_factory=train_iter_factory,
