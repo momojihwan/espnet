@@ -231,6 +231,7 @@ class ESPnetASROTTTransducerModel(AbsESPnetModel):
         self.decoder.set_device(encoder_out.device)
         decoder_out = self.decoder(decoder_in)
         decoder_out_lens = torch.tensor(batch_size * [decoder_out.size(1)]).to(decoder_out.device)
+
         # 3-2. Pre-trained LM
         with torch.no_grad():
             filtered_texts = []
@@ -246,7 +247,6 @@ class ESPnetASROTTTransducerModel(AbsESPnetModel):
             plm_out_lens = torch.tensor(batch_size * [plm_out.size(1)]).to(encoder_out.device)
 
         # 4-0. Set positional information
-        
         enc_pos = self.calculate_positional_encoding(encoder_out_lens[0], batch_size)
         dec_pos = self.calculate_positional_encoding(decoder_out_lens[0], batch_size)
         plm_pos = self.calculate_positional_encoding(plm_out_lens[0], batch_size)
@@ -272,15 +272,11 @@ class ESPnetASROTTTransducerModel(AbsESPnetModel):
             self.max_iter
         )
 
-        # # 4-*. knowledge distillation between prediction network and PLM.
-        # dec_to_plm_out = self.dec_to_plm_fc(decoder_out)
-        # # print("1 : ", dec_to_plm_out.size())
-        # # print("2 : ", plm_out.size())
-        # # exit()
-        # loss_kd = self._calc_kd_loss(
-        #     dec_to_plm_out,
-        #     plm_out
-        # )
+        # 4-3. Calculate cosine similarity between PLM guided acoustic features and PLM guided text features.
+        loss_cos = self._calc_cos_loss(
+            aligned_audio_features,
+            aligned_text_features
+        )
 
         # 4. Joint Network and RNNT loss computation
         if self.use_k2_pruned_loss:
