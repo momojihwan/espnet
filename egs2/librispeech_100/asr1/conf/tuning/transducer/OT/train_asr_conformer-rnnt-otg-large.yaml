@@ -1,18 +1,22 @@
 # general
 batch_type: numel
-batch_bins: 4600000
-accum_grad: 8
-max_epoch: 30 # 100 produces better results.
+batch_bins: 4200000
+accum_grad: 16
+max_epoch: 100 # 100 produces better results.
 patience: none
 init: none
 num_att_plot: 0
+ot_weight: 0.3
+
+unused_parameters: true    # set as true if some params are unused in DDP
+
 
 model_conf:
     transducer_weight: 1.0
     auxiliary_ctc_weight: 0.0
     report_cer: True
     report_wer: True
-
+    
 encoder_conf:
     main_conf:
       pos_wise_act_type: swish
@@ -20,7 +24,7 @@ encoder_conf:
       pos_enc_dropout_rate: 0.2
       dynamic_chunk_training: False
       short_chunk_size: 25
-      left_chunk_size: 4
+      num_left_chunks: 4
     input_conf:
       vgg_like: True
     body_conf:
@@ -43,21 +47,18 @@ decoder_conf:
     dropout_rate: 0.1
     embed_dropout_rate: 0.2
 
+
 joint_network_conf:
-    joint_space_size: 640
+    joint_space_size: 512
 
 # optimizer
 optim: adam
 optim_conf:
-    lr: 0.0015
+    lr: 0.001
     weight_decay: 0.000001
 scheduler: warmuplr
 scheduler_conf:
-    warmup_steps: 25000
-
-frontend_conf:
-  n_fft: 512
-  hop_length: 160
+    warmup_steps: 15000
 
 # criterion
 val_scheduler_criterion:
@@ -82,7 +83,7 @@ specaug_conf:
     num_freq_mask: 2
     apply_time_mask: true
     time_mask_width_ratio_range:
-    - 0.
+    - 0.0
     - 0.05
-    num_time_mask: 5
+    num_time_mask: 10
 

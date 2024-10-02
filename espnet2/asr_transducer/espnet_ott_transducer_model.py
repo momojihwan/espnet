@@ -75,7 +75,6 @@ class ESPnetASROTTTransducerModel(AbsESPnetModel):
         encoder: Encoder,
         decoder: AbsDecoder,
         joint_network: JointNetwork,
-        tokenizer: build_tokenizer,
         transducer_weight: float = 1.0,
         kd_weight: float = 0.3,
         temp_tau: float = 1.0,
@@ -120,15 +119,9 @@ class ESPnetASROTTTransducerModel(AbsESPnetModel):
         self.decoder = decoder
         self.joint_network = joint_network
 
-        self.tokenizer = tokenizer
-        self.plm = BertModel.from_pretrained('bert-base-uncased')
-        self.plm_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        self.enc_to_plm_fc = torch.nn.Linear(self.encoder.output_size, 768)
-        self.dec_to_plm_fc = torch.nn.Linear(self.decoder.output_size, 768)
-
-        self.kl_loss = torch.nn.KLDivLoss(reduction="batchmean", log_target=True)
         self.temp_tau = temp_tau
         self.kd_weight = kd_weight
+        # self.cos = torch.nn.CosineSimilarity(dim=1, eps=1e-6)
 
         self.criterion_transducer = None
         self.error_calculator = None
@@ -137,8 +130,8 @@ class ESPnetASROTTTransducerModel(AbsESPnetModel):
         self.use_auxiliary_lm_loss = auxiliary_lm_loss_weight > 0
 
         self.ot_weight = ot_weight
-        self.epsilon = 1
-        self.max_iter = 5
+        self.epsilon = 1.0
+        self.max_iter = 10
 
         if use_k2_pruned_loss:
             self.am_proj = torch.nn.Linear(
@@ -229,55 +222,19 @@ class ESPnetASROTTTransducerModel(AbsESPnetModel):
 
         # 3. Decoder
         self.decoder.set_device(encoder_out.device)
-        decoder_out = self.decoder(decoder_in)
-        decoder_out_lens = torch.tensor(batch_size * [decoder_out.size(1)]).to(decoder_out.device)
+        # decoder_out = self.decoder(decoder_in)
+        loss_wasserstein, decoder_out = self.arot_decoder(encoder_out, decoder_in)
+        
+        # # 4-1. Optimal transport computation between audio encoder and prediction network.
+        # loss_wasserstein, aligned_audio_features = self._calc_wasserstein_loss(
+        #     encoder_out,
+        #     decoder_out,
+        #     self.epsilon,
+        #     self.max_iter
+        # )
 
-        # 3-2. Pre-trained LM
-        with torch.no_grad():
-            filtered_texts = []
-            for i in range(batch_size):
-                filtered_token_ids = [token_id for token_id in text[i].tolist() if token_id != -1]
-                filtered_text = self.tokenizer.tokens2text(filtered_token_ids)
-                filtered_texts.append(filtered_text)
-
-            plm_inputs = self.plm_tokenizer(filtered_texts, return_tensors='pt', padding=True, truncation=True)
-            plm_in = plm_inputs["input_ids"].to(encoder_out.device)
-            plm_att_mask = plm_inputs["attention_mask"].to(encoder_out.device)
-            plm_out = self.plm(plm_in, attention_mask=plm_att_mask).last_hidden_state.to(encoder_out.device)
-            plm_out_lens = torch.tensor(batch_size * [plm_out.size(1)]).to(encoder_out.device)
-
-        # 4-0. Set positional information
-        enc_pos = self.calculate_positional_encoding(encoder_out_lens[0], batch_size)
-        dec_pos = self.calculate_positional_encoding(decoder_out_lens[0], batch_size)
-        plm_pos = self.calculate_positional_encoding(plm_out_lens[0], batch_size)
-
-        # 4-1. Optimal transport computation between audio encoder and PLM.
-        enc_to_plm_out = self.enc_to_plm_fc(encoder_out)
-        loss_enc_ot, aligned_audio_features = self._calc_wasserstein_loss(
-            enc_to_plm_out,
-            enc_pos,
-            plm_out,
-            plm_pos,
-            self.epsilon,
-            self.max_iter
-        )
-        # 4-2. Optimal transport computation between prediction network and PLM.
-        dec_to_plm_out = self.dec_to_plm_fc(decoder_out)
-        loss_dec_ot, aligned_text_features = self._calc_wasserstein_loss(
-            dec_to_plm_out,
-            dec_pos,
-            plm_out,
-            plm_pos,
-            self.epsilon,
-            self.max_iter
-        )
-
-        # 4-3. Calculate cosine similarity between PLM guided acoustic features and PLM guided text features.
-        loss_cos = self._calc_cos_loss(
-            aligned_audio_features,
-            aligned_text_features
-        )
-
+        # decoder_out = decoder_out + aligned_audio_features
+        
         # 4. Joint Network and RNNT loss computation
         if self.use_k2_pruned_loss:
             loss_trans = self._calc_k2_transducer_pruned_loss(
@@ -295,6 +252,7 @@ class ESPnetASROTTTransducerModel(AbsESPnetModel):
                 u_len,
             )
 
+
         # 5. Auxiliary losses
         loss_ctc, loss_lm = 0.0, 0.0
 
@@ -311,8 +269,7 @@ class ESPnetASROTTTransducerModel(AbsESPnetModel):
 
         loss = (
             self.transducer_weight * loss_trans
-            + self.ot_weight * loss_enc_ot
-            + self.ot_weight * loss_dec_ot
+            + self.ot_weight * loss_wasserstein
             + self.auxiliary_ctc_weight * loss_ctc
             + self.auxiliary_lm_loss_weight * loss_lm
         )
@@ -345,8 +302,7 @@ class ESPnetASROTTTransducerModel(AbsESPnetModel):
         stats = dict(
             loss=loss.detach(),
             loss_transducer=loss_trans.detach(),
-            loss_enc_ot=loss_enc_ot.detach(),
-            loss_dec_ot=loss_dec_ot.detach(),
+            loss_wasserstein=loss_wasserstein.detach(),
             loss_aux_ctc=loss_ctc.detach() if loss_ctc > 0.0 else None,
             loss_aux_lm=loss_lm.detach() if loss_lm > 0.0 else None,
             cer_transducer=cer_transducer,
@@ -462,15 +418,10 @@ class ESPnetASROTTTransducerModel(AbsESPnetModel):
 
         return feats, feats_lengths
 
-    def calculate_positional_encoding(self, emb_len, batch_size):
-        position = torch.arange(emb_len).unsqueeze(0).repeat(batch_size, 1).float().to(emb_len.device)
-        position = position / (emb_len - 1)
-        return position
-
-    def sinkhorn_knopp(self, cost_matrix, epsilon=1e-2, max_iter=100):
+    def sinkhorn_knopp(self, cost_matrix, epsilon=1.0, max_iter=5):
         n, m = cost_matrix.shape
-        u = torch.ones(n, device=cost_matrix.device) / n
-        v = torch.ones(m, device=cost_matrix.device) / m
+        u = torch.ones(n, device=cost_matrix.device) 
+        v = torch.ones(m, device=cost_matrix.device) 
 
         K = torch.exp(-cost_matrix / epsilon)
 
@@ -480,36 +431,123 @@ class ESPnetASROTTTransducerModel(AbsESPnetModel):
 
         transport_plan = torch.matmul(torch.diag(u), torch.matmul(K, torch.diag(v)))
         return transport_plan
+    
+    def get_local_cost(self, audio_features, text_features):
+        audio_norm = F.normalize(audio_features, p=2, dim=-1)
+        text_norm = F.normalize(text_features, p=2, dim=-1)
 
-    def _calc_wasserstein_loss(self, audio_features, audio_pos, text_features, text_pos, epsilon=1e-3, max_iter=100):
+        cosine_similarity = torch.matmul(audio_norm, text_norm.T)
+        cost_matrix = 1 - cosine_similarity
+        return cost_matrix
+
+    def compute_transport_matrix(self, audio_features, text_features, epsilon=1.0, max_iter=5):
+        cost_matrix = self.get_local_cost(audio_features, text_features)
+        transport_plan = self.sinkhorn_knopp(cost_matrix, epsilon, max_iter)  # (audio_len, text_len)
+
+        entropy_term = torch.sum(transport_plan * torch.log(transport_plan + 1e-9))
+        wasserstein_loss = torch.sum(transport_plan * cost_matrix) - entropy_term
+
+        return wasserstein_loss, transport_plan
+
+    def arot_decoder(self, encoder_out, decoder_in):
+
+        batch_size, audio_len, feature_dim = encoder_out.size()
+
+        total_decoder_outputs = []
+        total_wasserstein_loss = 0.0
+        for i in range(batch_size):
+
+            decoder_outputs = []
+
+            mid_wasserstein_loss = 0.0
+
+            h_n = torch.zeros(
+                self.decoder.dlayers,
+                1,
+                self.decoder.output_size,
+                device=encoder_out[i].device
+            )
+            c_n = torch.zeros(
+                self.decoder.dlayers,
+                1,
+                self.decoder.output_size,
+                device=encoder_out[i].device
+            )
+
+            states = (h_n, c_n)
+
+            for u in range(len(decoder_in[i])):
+                # Get current decoder output
+                # exit()
+                
+                label = torch.full(
+                    (1, 1),
+                    decoder_in[i][u],
+                    dtype=torch.long,
+                    device=encoder_out[i].device
+                )
+                embed = self.decoder.dropout_embed(self.decoder.embed(label))
+                decoder_out, states = self.decoder.rnn_forward(embed, states)
+                
+                decoder_out = decoder_out.squeeze(0)
+
+                wasserstein_loss, transport_plan = self.compute_transport_matrix(encoder_out[i], decoder_out)
+                aligned_audio = torch.matmul(transport_plan.T, encoder_out[i])  # (text_len, feature_dim)
+                
+                # combined_features = torch.cat((aligned_audio, decoder_out), dim=-1)
+                combined_features = aligned_audio + decoder_out
+
+                decoder_outputs.append(combined_features)
+                mid_wasserstein_loss += wasserstein_loss
+
+            mid_wasserstein_loss /= len(decoder_in)
+
+            total_wasserstein_loss += mid_wasserstein_loss
+            total_decoder_outputs.append(torch.stack(decoder_outputs).squeeze())
+        
+        total_wasserstein_loss /= batch_size
+
+        return total_wasserstein_loss, torch.stack(total_decoder_outputs)
+
+
+    def compute_cosine_cost_matrix(self, audio_features, text_features):
+        audio_norm = F.normalize(audio_features, p=2, dim=-1)
+        text_norm = F.normalize(text_features, p=2, dim=-1)
+
+        cosine_similarity = torch.matmul(audio_norm, text_norm.T)
+        cost_matrix = 1 - cosine_similarity
+        return cost_matrix
+
+
+
+    def _calc_wasserstein_loss(self, audio_features, text_features, epsilon=1.0, max_iter=10):
         batch_size, audio_len, feature_dim = audio_features.size()
         _, text_len, _ = text_features.size()
-
-        # 위치 정보 추가
-        audio_features = torch.cat((audio_features, audio_pos.unsqueeze(-1)), dim=-1)  # (batch_size, audio_len, feature_dim + 1)
-        text_features = torch.cat((text_features, text_pos.unsqueeze(-1)), dim=-1)  # (batch_size, text_len, feature_dim + 1)
-        # print("audio : ", audio_features.size())
-        # print("text : ", text_features.size())
-        # exit()
+        
         total_wasserstein_loss = 0.0
-        aligned_audio_features = []
+        aligned_features = []
 
         for i in range(batch_size):
-            cost_matrix = torch.cdist(audio_features[i], text_features[i])  # (audio_len, text_len)
+            # cost_matrix = torch.cdist(audio_features[i], text_features[i])  # (audio_len, text_len)
+            cost_matrix = self.compute_cosine_cost_matrix(audio_features[i], text_features[i])
             transport_plan = self.sinkhorn_knopp(cost_matrix, epsilon, max_iter)  # (audio_len, text_len)
             
             # 정렬된 오디오 특징 계산
-            aligned_audio = torch.matmul(transport_plan, text_features[i])  # (audio_len, feature_dim + 1)
-            aligned_audio_features.append(aligned_audio[:, :-1])  # 위치 정보 제거
+            aligned_audio = torch.matmul(transport_plan.T, audio_features[i])  # (audio_len, feature_dim + 1)
+            aligned_features.append(aligned_audio)  # 위치 정보 제거
+            # aligned_audio_features.append(aligned_audio)  # 위치 정보 제거
 
-            # Wasserstein 손실 계산
-            wasserstein_loss = torch.sum(transport_plan * cost_matrix)
+            # Wasserstein 손실 계산 with Entropy regularization
+            entropy_term = torch.sum(transport_plan * torch.log(transport_plan + 1e-9))
+            wasserstein_loss = torch.sum(transport_plan * cost_matrix) - entropy_term
             total_wasserstein_loss += wasserstein_loss
 
         total_wasserstein_loss /= batch_size
-        aligned_audio_features = torch.stack(aligned_audio_features, dim=0)  # (batch_size, audio_len, feature_dim)
+        aligned_features = torch.stack(aligned_features, dim=0)  # (batch_size, audio_len, feature_dim)
 
-        return total_wasserstein_loss, aligned_audio_features
+        return total_wasserstein_loss, aligned_features
+
+
 
     def _calc_kd_loss(
         self,

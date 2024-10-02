@@ -22,11 +22,9 @@ from espnet2.asr_transducer.beam_search_transducer import (
 from espnet2.asr_transducer.frontend.online_audio_processor import OnlineAudioProcessor
 from espnet2.asr_transducer.utils import TooShortUttError
 from espnet2.fileio.datadir_writer import DatadirWriter
-from espnet2.tasks.asr_transducer import ASRTransducerTask
+from espnet2.tasks.asr_transducer_ott import ASRTransducerTask
 from espnet2.tasks.lm import LMTask
 from espnet2.text.build_tokenizer import build_tokenizer
-from espnet2.asr_transducer.utils import get_transducer_task_io
-
 from espnet2.text.token_id_converter import TokenIDConverter
 from espnet2.torch_utils.set_all_random_seed import set_all_random_seed
 from espnet2.utils import config_argparse
@@ -276,12 +274,11 @@ class Speech2Text:
         if self.asr_model.normalize is not None:
             feats, feats_length = self.asr_model.normalize(feats, feats_length)
 
-        enc_out, encoder_out_lens = self.asr_model.encoder(feats, feats_length)
+        enc_out, _ = self.asr_model.encoder(feats, feats_length)
 
         nbest_hyps = self.beam_search(enc_out[0])
 
         return nbest_hyps
-
 
     def hypotheses_to_results(self, nbest_hyps: List[Hypothesis]) -> List[Any]:
         """Build partial or final results from the hypotheses.

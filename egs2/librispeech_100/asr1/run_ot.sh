@@ -10,7 +10,7 @@ valid_set="dev"
 test_sets="test_clean test_other"
 
 asr_task="asr_transducer_ott"
-asr_config="conf/tuning/transducer/train_asr_conformer-rnnt-ott.yaml"
+asr_config="conf/tuning/transducer/OT/train_asr_conformer-rnnt-ott.yaml"
 inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
 
 ./asr.sh \

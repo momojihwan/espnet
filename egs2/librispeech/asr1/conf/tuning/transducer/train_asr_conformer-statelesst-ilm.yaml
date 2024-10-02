@@ -1,6 +1,6 @@
 # general
 batch_type: numel
-batch_bins: 12000000
+batch_bins: 6000000
 accum_grad: 16
 max_epoch: 25 # 100 produces better results.
 patience: none

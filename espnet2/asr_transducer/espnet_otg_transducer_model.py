@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
+
 from packaging.version import parse as V
 from typeguard import check_argument_types
 
@@ -14,12 +15,14 @@ from espnet2.asr.specaug.abs_specaug import AbsSpecAug
 from espnet2.asr_transducer.decoder.abs_decoder import AbsDecoder
 from espnet2.asr_transducer.encoder.encoder import Encoder
 from espnet2.asr_transducer.joint_network import JointNetwork
+from espnet2.text.token_id_converter import TokenIDConverter
 from espnet2.asr_transducer.utils import get_transducer_task_io
 from espnet2.layers.abs_normalize import AbsNormalize
 from espnet2.torch_utils.device_funcs import force_gatherable
 from espnet2.train.abs_espnet_model import AbsESPnetModel
 
-import matplotlib.pyplot as plt
+from espnet2.text.build_tokenizer import build_tokenizer
+from transformers import BertTokenizer, BertModel
 
 if V(torch.__version__) >= V("1.6.0"):
     from torch.cuda.amp import autocast
@@ -30,7 +33,7 @@ else:
         yield
 
 
-class ESPnetASRTransducerModel(AbsESPnetModel):
+class ESPnetASROTGTransducerModel(AbsESPnetModel):
     """ESPnet2ASRTransducerModel module definition.
 
     Args:
@@ -73,6 +76,7 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
         decoder: AbsDecoder,
         joint_network: JointNetwork,
         transducer_weight: float = 1.0,
+        ot_weight: float = 0.3,
         use_k2_pruned_loss: bool = False,
         k2_pruned_loss_args: Dict = {},
         warmup_steps: int = 25000,
@@ -113,11 +117,17 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
         self.decoder = decoder
         self.joint_network = joint_network
 
+        self.fc = torch.nn.Linear(encoder.output_size, vocab_size)
+
         self.criterion_transducer = None
         self.error_calculator = None
 
         self.use_auxiliary_ctc = auxiliary_ctc_weight > 0
         self.use_auxiliary_lm_loss = auxiliary_lm_loss_weight > 0
+
+        self.ot_weight = ot_weight
+        self.epsilon = 1.0
+        self.max_iter = 10
 
         if use_k2_pruned_loss:
             self.am_proj = torch.nn.Linear(
@@ -209,7 +219,16 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
         # 3. Decoder
         self.decoder.set_device(encoder_out.device)
         decoder_out = self.decoder(decoder_in)
+        
+        # # 4-1. Optimal transport computation between audio encoder and prediction network.
+        loss_wasserstein, aligned_features = self._calc_wasserstein_loss(
+            encoder_out,
+            decoder_out,
+        )
 
+        aligned_features = self.fc(aligned_features)
+        # decoder_out = decoder_out + aligned_audio_features
+        
         # 4. Joint Network and RNNT loss computation
         if self.use_k2_pruned_loss:
             loss_trans = self._calc_k2_transducer_pruned_loss(
@@ -219,7 +238,6 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
             joint_out = self.joint_network(
                 encoder_out.unsqueeze(2), decoder_out.unsqueeze(1)
             )
-
             loss_trans = self._calc_transducer_loss(
                 encoder_out,
                 joint_out,
@@ -227,6 +245,8 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
                 t_len,
                 u_len,
             )
+
+        joint_out = joint_out + aligned_features
 
         # 5. Auxiliary losses
         loss_ctc, loss_lm = 0.0, 0.0
@@ -244,6 +264,7 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
 
         loss = (
             self.transducer_weight * loss_trans
+            + self.ot_weight * loss_wasserstein
             + self.auxiliary_ctc_weight * loss_ctc
             + self.auxiliary_lm_loss_weight * loss_lm
         )
@@ -276,6 +297,7 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
         stats = dict(
             loss=loss.detach(),
             loss_transducer=loss_trans.detach(),
+            loss_wasserstein=loss_wasserstein.detach(),
             loss_aux_ctc=loss_ctc.detach() if loss_ctc > 0.0 else None,
             loss_aux_lm=loss_lm.detach() if loss_lm > 0.0 else None,
             cer_transducer=cer_transducer,
@@ -391,15 +413,7 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
 
         return feats, feats_lengths
 
-    def compute_cosine_cost_matrix(self, audio_features, text_features):
-        audio_norm = F.normalize(audio_features, p=2, dim=-1)
-        text_norm = F.normalize(text_features, p=2, dim=-1)
-
-        cosine_similarity = torch.matmul(audio_norm, text_norm.T)
-        cost_matrix = 1 - cosine_similarity
-        return cost_matrix
-
-    def sinkhorn_knopp(self, cost_matrix, epsilon=1.0, max_iter=10):
+    def sinkhorn_knopp(self, cost_matrix, epsilon=1.0, max_iter=3):
         n, m = cost_matrix.shape
         u = torch.ones(n, device=cost_matrix.device) 
         v = torch.ones(m, device=cost_matrix.device) 
@@ -412,8 +426,34 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
 
         transport_plan = torch.matmul(torch.diag(u), torch.matmul(K, torch.diag(v)))
         return transport_plan
+    
+    def get_local_cost(self, audio_features, text_features):
+        audio_norm = F.normalize(audio_features, p=2, dim=-1)
+        text_norm = F.normalize(text_features, p=2, dim=-1)
 
-    def _calc_wasserstein_loss(self, audio_features, text_features, epsilon=1.0, max_iter=5):
+        cosine_similarity = torch.matmul(audio_norm, text_norm.T)
+        cost_matrix = 1 - cosine_similarity
+        return cost_matrix
+
+    def compute_transport_matrix(self, audio_features, text_features, epsilon=1.0, max_iter=3):
+        cost_matrix = self.get_local_cost(audio_features, text_features)
+        transport_plan = self.sinkhorn_knopp(cost_matrix, epsilon, max_iter)  # (audio_len, text_len)
+
+        entropy_term = torch.sum(transport_plan * torch.log(transport_plan + 1e-9))
+        wasserstein_loss = torch.sum(transport_plan * cost_matrix) - entropy_term
+
+        return wasserstein_loss, transport_plan
+
+    def compute_cosine_cost_matrix(self, audio_features, text_features):
+        audio_norm = F.normalize(audio_features, p=2, dim=-1)
+        text_norm = F.normalize(text_features, p=2, dim=-1)
+
+        cosine_similarity = torch.matmul(audio_norm, text_norm.T)
+        cost_matrix = 1 - cosine_similarity
+        return cost_matrix
+
+
+    def _calc_wasserstein_loss(self, audio_features, text_features, epsilon=1.0, max_iter=3):
         batch_size, audio_len, feature_dim = audio_features.size()
         _, text_len, _ = text_features.size()
         
@@ -426,20 +466,59 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
             transport_plan = self.sinkhorn_knopp(cost_matrix, epsilon, max_iter)  # (audio_len, text_len)
             
             # 정렬된 오디오 특징 계산
-            aligned_audio = torch.matmul(transport_plan.T, audio_features[i])  # (audio_len, feature_dim + 1)
-            aligned_features.append(aligned_audio)  # 위치 정보 제거
-            # aligned_audio_features.append(aligned_audio)  # 위치 정보 제거
-
+            aligned_feature = torch.einsum('tu,td, ud -> tud', transport_plan, audio_features[i], text_features[i])
+            aligned_features.append(aligned_feature)  # 위치 정보 제거
+            
             # Wasserstein 손실 계산 with Entropy regularization
             entropy_term = torch.sum(transport_plan * torch.log(transport_plan + 1e-9))
             wasserstein_loss = torch.sum(transport_plan * cost_matrix) - entropy_term
             total_wasserstein_loss += wasserstein_loss
 
         total_wasserstein_loss /= batch_size
-        aligned_features = torch.stack(aligned_features, dim=0)  # (batch_size, audio_len, feature_dim)
+        aligned_features = torch.stack(aligned_features, dim=0)  # (batch_size, audio_len, text_len, feature_dim)
 
         return total_wasserstein_loss, aligned_features
 
+
+    def _calc_kd_loss(
+        self,
+        dec_out,
+        plm_out
+    ) -> torch.Tensor:
+        """Compute Knowledge Distillation loss.
+
+        Args:
+            dec_out: Prediction Network output sequences. (B, U, D_joint)
+            plm_out: Teacher model's PLM output sequences. (B, U', D_joint)
+
+        Return:
+            loss_kd: Knowledge distillation loss value.
+        """
+        
+        s_in = F.log_softmax(dec_out / self.temp_tau, dim=-1)
+        t_in = F.log_softmax(plm_out / self.temp_tau, dim=-1)
+
+        loss_kd = self.kl_loss(s_in, t_in)
+
+        return loss_kd
+
+
+    # def optimal_transport_alignment(self, audio_features, audio_pos, text_features, text_pos):
+    #     B, T, D = audio_features.size()
+    #     _, U, _ = text_features.size()
+
+    #     # Add positional information
+    #     audio_features = torch.cat((audio_features, audio_pos.unsqueeze(-1)), dim=-1)   # [B, T, D+1]
+    #     text_features = torch.cat((text_features, text_pos.unsqueeze(-1)), dim=-1)      # [B, U, D+1]
+        
+    #     # Align optimal transport alignment by Euclidean distrance
+    #     cost_matrix = torch.cdist(audio_features, text_features)
+    #     transport_plan = torch.softmax(-cost_matrix, dim=-1)
+
+    #     aligned_audio_features = torch.matmul(transport_plan.transpose(1, 2), audio_features)   # [B, U, D+1]
+    #     aligned_audio_features = aligned_audio_features[:, :, :-1]  # [B, U, D]
+
+    #     return aligned_audio_features
 
     def _calc_transducer_loss(
         self,
@@ -634,9 +713,10 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
             torch.nn.functional.dropout(encoder_out, p=self.ctc_dropout_rate)
         )
         ctc_in = torch.log_softmax(ctc_in.transpose(0, 1), dim=-1)
+
         target_mask = target != 0
         ctc_target = target[target_mask].cpu()
-        
+
         with torch.backends.cudnn.flags(deterministic=True):
             loss_ctc = torch.nn.functional.ctc_loss(
                 ctc_in,
@@ -683,4 +763,3 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
         loss_lm = loss_lm.masked_fill(ignore, 0).sum() / batch_size
 
         return loss_lm
-

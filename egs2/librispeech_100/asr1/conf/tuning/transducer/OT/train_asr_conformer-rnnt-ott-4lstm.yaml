@@ -1,12 +1,12 @@
 # general
 batch_type: numel
-batch_bins: 1400000
+batch_bins: 4800000
 accum_grad: 16
-max_epoch: 50 # 100 produces better results.
-patience: none
+max_epoch: 20 # 100 produces better results.
+patience: 5
 init: none
 num_att_plot: 0
-initialized_checkpoint: /home/mozi/Workspace/espnet/egs2/librispeech_100/asr1/exp/asr_train_asr_conformer-rnnt_raw_en_bpe2048_sp/checkpoint.pth
+initialized_checkpoint: /home/user/Workspace/espnet/egs2/librispeech_100/asr1/exp/asr_train_asr_conformer-rnnt_raw_en_bpe2048_sp_4lstm/checkpoint.pth
 kd_weight: 0.3
 ot_weight: 0.3
 temp_tau: 1.0
@@ -44,7 +44,7 @@ encoder_conf:
 decoder: rnn
 decoder_conf:
     rnn_type: lstm
-    num_layers: 1
+    num_layers: 4
     embed_size: 512
     hidden_size: 512
     dropout_rate: 0.1
@@ -54,7 +54,8 @@ decoder_conf:
 joint_network_conf:
     joint_space_size: 512
 
-# minimization optimizer
+
+# optimizer
 optim: adam
 optim_conf:
     lr: 0.001
@@ -63,15 +64,7 @@ scheduler: warmuplr
 scheduler_conf:
     warmup_steps: 15000
 
-# # maximization optimizer
-# optim2: adam
-# optim2_conf:
-#     perturbation_late: 0.001
-#     weight_decay: 0.0001
-#     embedding_steps: 1000
-# scheduler2: warmuplr
-# scheduler2_conf:
-#     warmup_steps: 1000
+unused_parameters: true    # set as true if some params are unused in DDP
 
 
 # criterion

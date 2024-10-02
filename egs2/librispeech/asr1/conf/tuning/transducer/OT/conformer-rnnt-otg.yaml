@@ -6,6 +6,10 @@ max_epoch: 30 # 100 produces better results.
 patience: none
 init: none
 num_att_plot: 0
+ot_weight: 0.3
+
+unused_parameters: true    # set as true if some params are unused in DDP
+
 
 model_conf:
     transducer_weight: 1.0
@@ -20,7 +24,7 @@ encoder_conf:
       pos_enc_dropout_rate: 0.2
       dynamic_chunk_training: False
       short_chunk_size: 25
-      left_chunk_size: 4
+      num_left_chunks: 4
     input_conf:
       vgg_like: True
     body_conf:
@@ -34,10 +38,11 @@ encoder_conf:
       conv_mod_kernel_size: 31
       num_blocks: 17
 
+
 decoder: rnn
 decoder_conf:
     rnn_type: lstm
-    num_layers: 1
+    num_layers: 2
     embed_size: 512
     hidden_size: 512
     dropout_rate: 0.1
@@ -84,5 +89,44 @@ specaug_conf:
     time_mask_width_ratio_range:
     - 0.
     - 0.05
-    num_time_mask: 5
+    num_time_mask: 10
 
+
+
+# encoder_conf:
+#     main_conf:
+#         pos_wise_layer_type: linear
+#         pos_wise_act_type: swish
+#         pos_enc_layer_type: rel_pos
+#         conv_mod_act_type: swish
+#     input_conf:
+#         block_type: conv2d
+#         conv_size: 256
+#         dropout_rate_pos_enc: 0.1
+#         dim_output: 512
+#         dim_conv: 512
+#     body_conf:
+#       - block_type: conformer
+#         linear_size: 2048
+#         dim_hidden: 512
+#         heads: 8
+#         dropout_rate: 0.1
+#         dropout_rate_pos_enc: 0.1
+#         dropout_rate_pos_wise: 0.1
+#         dropout_rate_att: 0.1
+#         normalize_before: true
+#         macaron_style: true
+#         conv_mod_kernel_size: 31
+#         num_blocks: 12
+
+# decoder: rnn
+# decoder_conf:
+#     rnn_type: lstm
+#     num_layers: 1
+#     dim_embedding: 512
+#     dim_hidden: 512
+#     dropout: 0.1
+#     dropout_embed: 0.2
+
+# joint_network_conf:
+#     dim_joint_space: 640

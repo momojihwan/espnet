@@ -5,12 +5,12 @@ set -e
 set -u
 set -o pipefail
 
-train_set="train_960"
+train_set="train_clean_100"
 valid_set="dev"
-test_sets="test_clean test_other dev_clean dev_other"
+test_sets="test_clean test_other"
 
-asr_task="asr_transducer_ilm"
-asr_config="conf/tuning/transducer/train_asr_conformer-statelesst-ilm.yaml"
+asr_task="asr_transducer_otg"
+asr_config="conf/tuning/transducer/OT/train_asr_conformer-rnnt-otg-large.yaml"
 inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
 
 ./asr.sh \
@@ -22,6 +22,8 @@ inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
     --max_wav_duration 30 \
     --speed_perturb_factors "0.9 1.0 1.1" \
     --asr_task "${asr_task}" \
+    --audio_format "flac.ark" \
+    --feats_type raw \
     --use_lm false \
     --asr_config "${asr_config}" \
     --inference_config "${inference_config}" \

@@ -1,15 +1,21 @@
 # general
 batch_type: numel
-batch_bins: 4600000
-accum_grad: 8
-max_epoch: 30 # 100 produces better results.
-patience: none
+batch_bins: 4800000
+accum_grad: 16
+max_epoch: 20 # 100 produces better results.
+patience: 5
 init: none
 num_att_plot: 0
+initialized_checkpoint: /home/user/Workspace/espnet/egs2/librispeech_100/asr1/exp/asr_train_asr_conformer-rnnt_raw_en_bpe2048_sp_1lstm/checkpoint.pth
+kd_weight: 0.3
+ot_weight: 0.3
+temp_tau: 1.0
+token_type: bpe
 
 model_conf:
     transducer_weight: 1.0
     auxiliary_ctc_weight: 0.0
+    fastemit_lambda: 0.0
     report_cer: True
     report_wer: True
 
@@ -19,8 +25,9 @@ encoder_conf:
       conv_mod_act_type: swish
       pos_enc_dropout_rate: 0.2
       dynamic_chunk_training: False
+      short_chunk_threshold: 0.75
       short_chunk_size: 25
-      left_chunk_size: 4
+      num_left_chunks: 4
     input_conf:
       vgg_like: True
     body_conf:
@@ -32,7 +39,7 @@ encoder_conf:
       pos_wise_dropout_rate: 0.1
       att_dropout_rate: 0.1
       conv_mod_kernel_size: 31
-      num_blocks: 17
+      num_blocks: 12
 
 decoder: rnn
 decoder_conf:
@@ -43,21 +50,22 @@ decoder_conf:
     dropout_rate: 0.1
     embed_dropout_rate: 0.2
 
+
 joint_network_conf:
-    joint_space_size: 640
+    joint_space_size: 512
+
 
 # optimizer
 optim: adam
 optim_conf:
-    lr: 0.0015
+    lr: 0.001
     weight_decay: 0.000001
 scheduler: warmuplr
 scheduler_conf:
-    warmup_steps: 25000
+    warmup_steps: 15000
 
-frontend_conf:
-  n_fft: 512
-  hop_length: 160
+unused_parameters: true    # set as true if some params are unused in DDP
+
 
 # criterion
 val_scheduler_criterion:
@@ -84,5 +92,13 @@ specaug_conf:
     time_mask_width_ratio_range:
     - 0.
     - 0.05
-    num_time_mask: 5
-
+    num_time_mask: 10
+    # freq_mask_width_range:
+    # - 0
+    # - 27
+    # num_freq_mask: 2
+    # apply_time_mask: true
+    # time_mask_width_ratio_range:
+    # - 0.
+    # - 40
+    # num_time_mask: 2

@@ -5,7 +5,6 @@ from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from packaging.version import parse as V
 from typeguard import check_argument_types
 
@@ -390,56 +389,6 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
             feats, feats_lengths = speech, speech_lengths
 
         return feats, feats_lengths
-
-    def compute_cosine_cost_matrix(self, audio_features, text_features):
-        audio_norm = F.normalize(audio_features, p=2, dim=-1)
-        text_norm = F.normalize(text_features, p=2, dim=-1)
-
-        cosine_similarity = torch.matmul(audio_norm, text_norm.T)
-        cost_matrix = 1 - cosine_similarity
-        return cost_matrix
-
-    def sinkhorn_knopp(self, cost_matrix, epsilon=1.0, max_iter=10):
-        n, m = cost_matrix.shape
-        u = torch.ones(n, device=cost_matrix.device) 
-        v = torch.ones(m, device=cost_matrix.device) 
-
-        K = torch.exp(-cost_matrix / epsilon)
-
-        for _ in range(max_iter):
-            u = 1.0 / (torch.matmul(K, v))
-            v = 1.0 / (torch.matmul(K.T, u))
-
-        transport_plan = torch.matmul(torch.diag(u), torch.matmul(K, torch.diag(v)))
-        return transport_plan
-
-    def _calc_wasserstein_loss(self, audio_features, text_features, epsilon=1.0, max_iter=5):
-        batch_size, audio_len, feature_dim = audio_features.size()
-        _, text_len, _ = text_features.size()
-        
-        total_wasserstein_loss = 0.0
-        aligned_features = []
-
-        for i in range(batch_size):
-            # cost_matrix = torch.cdist(audio_features[i], text_features[i])  # (audio_len, text_len)
-            cost_matrix = self.compute_cosine_cost_matrix(audio_features[i], text_features[i])
-            transport_plan = self.sinkhorn_knopp(cost_matrix, epsilon, max_iter)  # (audio_len, text_len)
-            
-            # 정렬된 오디오 특징 계산
-            aligned_audio = torch.matmul(transport_plan.T, audio_features[i])  # (audio_len, feature_dim + 1)
-            aligned_features.append(aligned_audio)  # 위치 정보 제거
-            # aligned_audio_features.append(aligned_audio)  # 위치 정보 제거
-
-            # Wasserstein 손실 계산 with Entropy regularization
-            entropy_term = torch.sum(transport_plan * torch.log(transport_plan + 1e-9))
-            wasserstein_loss = torch.sum(transport_plan * cost_matrix) - entropy_term
-            total_wasserstein_loss += wasserstein_loss
-
-        total_wasserstein_loss /= batch_size
-        aligned_features = torch.stack(aligned_features, dim=0)  # (batch_size, audio_len, feature_dim)
-
-        return total_wasserstein_loss, aligned_features
-
 
     def _calc_transducer_loss(
         self,

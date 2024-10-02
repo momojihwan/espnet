@@ -7,27 +7,26 @@ set -o pipefail
 
 train_set="train_960"
 valid_set="dev"
-test_sets="test_clean test_other dev_clean dev_other"
+test_sets="test_clean test_other"
 
-asr_task="asr_transducer_ilm"
-asr_config="conf/tuning/transducer/train_asr_conformer-statelesst-ilm.yaml"
+asr_task="asr_transducer_ott"
+asr_config="conf/tuning/transducer/OT/conformer-rnnt-ott.yaml"
 inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
 
 ./asr.sh \
     --lang en \
     --ngpu 4 \
-    --nj 16 \
-    --inference_nj 16 \
     --nbpe 2048 \
+    --inference_nj 16 \
     --max_wav_duration 30 \
     --speed_perturb_factors "0.9 1.0 1.1" \
     --asr_task "${asr_task}" \
-    --use_lm false \
     --asr_config "${asr_config}" \
+    --feats_type raw \
+    --use_lm false \
     --inference_config "${inference_config}" \
     --train_set "${train_set}" \
     --valid_set "${valid_set}" \
     --test_sets "${test_sets}" \
     --lm_train_text "data/${train_set}/text" \
     --bpe_train_text "data/${train_set}/text" "$@" \
-    # --display_hypotheses false

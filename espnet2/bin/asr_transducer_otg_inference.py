@@ -22,7 +22,7 @@ from espnet2.asr_transducer.beam_search_transducer import (
 from espnet2.asr_transducer.frontend.online_audio_processor import OnlineAudioProcessor
 from espnet2.asr_transducer.utils import TooShortUttError
 from espnet2.fileio.datadir_writer import DatadirWriter
-from espnet2.tasks.asr_transducer import ASRTransducerTask
+from espnet2.tasks.asr_transducer_otg import ASRTransducerTask
 from espnet2.tasks.lm import LMTask
 from espnet2.text.build_tokenizer import build_tokenizer
 from espnet2.asr_transducer.utils import get_transducer_task_io
@@ -280,6 +280,27 @@ class Speech2Text:
 
         nbest_hyps = self.beam_search(enc_out[0])
 
+        # OT pseudo labeling 
+        # pseudo_labels = torch.tensor(nbest_hyps[0].yseq, device=enc_out.device).unsqueeze(0)
+        # decoder_in, target, t_len, u_len = get_transducer_task_io(
+        #     pseudo_labels,
+        #     encoder_out_lens,
+        #     ignore_id=self.asr_model.ignore_id,
+        # )
+
+        # text_features = self.asr_model.decoder(decoder_in)
+        
+        # _, aligned_text_features = self.asr_model._calc_wasserstein_loss(
+        #     text_features,
+        #     enc_out,
+        #     1.0,
+        #     5
+        # )
+
+        # enc_out = enc_out + aligned_text_features
+        
+        # nbest_hyps = self.beam_search(enc_out[0])
+
         return nbest_hyps
 
 
@@ -475,7 +496,7 @@ def inference(
         for keys, batch in loader:
             assert isinstance(batch, dict), type(batch)
             assert all(isinstance(s, str) for s in keys), keys
-
+            
             _bs = len(next(iter(batch.values())))
             assert len(keys) == _bs, f"{len(keys)} != {_bs}"
             batch = {k: v[0] for k, v in batch.items() if not k.endswith("_lengths")}

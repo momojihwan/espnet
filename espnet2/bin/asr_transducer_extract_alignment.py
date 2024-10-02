@@ -22,7 +22,7 @@ from espnet2.asr_transducer.beam_search_transducer import (
 from espnet2.asr_transducer.frontend.online_audio_processor import OnlineAudioProcessor
 from espnet2.asr_transducer.utils import TooShortUttError
 from espnet2.fileio.datadir_writer import DatadirWriter
-from espnet2.tasks.asr_transducer import ASRTransducerTask
+from espnet2.tasks.asr_transducer_otg import ASRTransducerTask
 from espnet2.tasks.lm import LMTask
 from espnet2.text.build_tokenizer import build_tokenizer
 from espnet2.asr_transducer.utils import get_transducer_task_io
@@ -64,27 +64,28 @@ class Speech2Text:
         self,
         asr_train_config: Union[Path, str] = None,
         asr_model_file: Union[Path, str] = None,
-        beam_search_config: Dict[str, Any] = None,
-        lm_train_config: Union[Path, str] = None,
-        lm_file: Union[Path, str] = None,
-        token_type: str = None,
-        bpemodel: str = None,
-        device: str = "cpu",
-        beam_size: int = 5,
-        dtype: str = "float32",
-        lm_weight: float = 1.0,
-        quantize_asr_model: bool = False,
-        quantize_modules: List[str] = None,
-        quantize_dtype: str = "qint8",
-        nbest: int = 1,
-        streaming: bool = False,
-        decoding_window: int = 640,
-        left_context: int = 32,
     ) -> None:
         """Construct a Speech2Text object."""
         super().__init__()
 
         assert check_argument_types()
+
+        beam_search_config = None
+        lm_train_config = None
+        lm_file = None
+        token_type = None
+        bpemodel = None
+        device = "cpu"
+        beam_size = 5
+        dtype = "float32"
+        lm_weight = 1.0
+        quantize_asr_model = False
+        quantize_modules = None
+        quantize_dtype = "qint8"
+        nbest = 1
+        streaming = False
+        decoding_window: int = 640,
+        left_context = 32
 
         asr_model, asr_train_args = ASRTransducerTask.build_model_from_file(
             asr_train_config, asr_model_file, device
@@ -276,7 +277,7 @@ class Speech2Text:
         if self.asr_model.normalize is not None:
             feats, feats_length = self.asr_model.normalize(feats, feats_length)
 
-        enc_out, encoder_out_lens = self.asr_model.encoder(feats, feats_length)
+        enc_out, _ = self.asr_model.encoder(feats, feats_length)
 
         nbest_hyps = self.beam_search(enc_out[0])
 
