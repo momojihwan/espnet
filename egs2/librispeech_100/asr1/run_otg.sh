@@ -10,7 +10,7 @@ valid_set="dev"
 test_sets="test_clean test_other"
 
 asr_task="asr_transducer_otg"
-asr_config="conf/tuning/transducer/OT/train_asr_conformer-rnnt-otg-large.yaml"
+asr_config="conf/tuning/transducer/OT/train_asr_conformer-rnnt-otg-streaming.yaml"
 inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
 
 ./asr.sh \
@@ -22,7 +22,6 @@ inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
     --max_wav_duration 30 \
     --speed_perturb_factors "0.9 1.0 1.1" \
     --asr_task "${asr_task}" \
-    --audio_format "flac.ark" \
     --feats_type raw \
     --use_lm false \
     --asr_config "${asr_config}" \
