@@ -186,7 +186,7 @@ class Trainer:
         cls,
         model: AbsESPnetModel,
         teacher_model: AbsESPnetModel,
-        student_checkpoint: Union[str, Path],
+        student_checkpoint: Union[str, Path, None],
         optimizers: Sequence[torch.optim.Optimizer],
         schedulers: Sequence[Optional[AbsScheduler]],
         train_iter_factory: AbsIterFactory,

@@ -1225,7 +1225,7 @@ class AbsTask(ABC):
             logging.info("Skipping model building in collect_stats stage.")
         else:
             # 2-1. Build teacher model
-            teacher_model = ASRTransducerTask.build_model(args=args)
+            teacher_model = ASRTransducerTask.build_model(args=args, teacher=True)
             teacher_model = teacher_model.to(
                 dtype=getattr(torch, args.train_dtype),
                 device="cuda" if args.ngpu > 0 else "cpu",

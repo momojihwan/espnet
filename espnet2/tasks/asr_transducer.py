@@ -335,7 +335,7 @@ class ASRTransducerTask(AbsTask):
         return retval
 
     @classmethod
-    def build_model(cls, args: argparse.Namespace) -> ESPnetASRTransducerModel:
+    def build_model(cls, args: argparse.Namespace, teacher=False) -> ESPnetASRTransducerModel:
         """Required data depending on task mode.
 
         Args:
@@ -393,7 +393,10 @@ class ASRTransducerTask(AbsTask):
             normalize = None
 
         # 4. Encoder
-        encoder = Encoder(input_size, **args.encoder_conf)
+        if teacher:
+            encoder = Encoder(input_size, **args.teacher_encoder_conf)
+        else:
+            encoder = Encoder(input_size, **args.encoder_conf)
         encoder_output_size = encoder.output_size
 
         # 5. Decoder

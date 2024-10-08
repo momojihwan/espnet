@@ -279,35 +279,6 @@ class BeamSearchTransducer:
             device=self.decoder.device,
         )
 
-    def sinkhorn_knopp(self, cost_matrix, epsilon=1.0, max_iter=10):
-        n, m = cost_matrix.shape
-        u = torch.ones(n, device=cost_matrix.device) 
-        v = torch.ones(m, device=cost_matrix.device) 
-
-        K = torch.exp(-cost_matrix / epsilon)
-
-        for _ in range(max_iter):
-            u = 1.0 / (torch.matmul(K, v))
-            v = 1.0 / (torch.matmul(K.T, u))
-
-        transport_plan = torch.matmul(torch.diag(u), torch.matmul(K, torch.diag(v)))
-        return transport_plan
-    
-    def get_local_cost(self, enc_out, dec_out):
-        audio_norm = F.normalize(enc_out, p=2, dim=-1)
-        text_norm = F.normalize(dec_out, p=2, dim=-1)
-
-        cosine_similarity = torch.matmul(audio_norm, text_norm.T)
-        cost_matrix = 1 - cosine_similarity
-        return cost_matrix
-
-    def compute_transport_matrix(self, enc_out, dec_out, epsilon=1.0, max_iter=5):
-        cost_matrix = self.get_local_cost(enc_out, dec_out)
-        transport_plan = self.sinkhorn_knopp(cost_matrix, epsilon, max_iter)  # (audio_len, text_len)
-
-        return transport_plan
-
-
     def default_beam_search(self, enc_out: torch.Tensor) -> List[Hypothesis]:
         """Beam search implementation without prefix search.
 
@@ -337,7 +308,6 @@ class BeamSearchTransducer:
         for t in range(max_t):
             hyps = kept_hyps
             kept_hyps = []
-            # print("t : ", t)
 
             while True:
                 max_hyp = max(hyps, key=lambda x: x.score)
@@ -347,16 +317,6 @@ class BeamSearchTransducer:
                     max_hyp.yseq,
                     max_hyp.dec_state,
                 )
-
-                # transport_plan = self.compute_transport_matrix(enc_out[:t+1], dec_out)
-                # aligned_audio = torch.matmul(transport_plan.T, enc_out[:t+1])  # (text_len, feature_dim)
-                # combined_features = aligned_audio + dec_out
-
-                # print("enc : ", enc_out.size())
-                # print("dec : ", dec_out.size())
-                # print("enc 2 : ", enc_out[t:t+1,:].size())
-                # print("aling : ", aligned_audio.size())
-                # print("com :", combined_features.size())
                 
                 logp = torch.log_softmax(
                     self.joint_network(enc_out[t : t + 1, :], dec_out),
@@ -404,9 +364,6 @@ class BeamSearchTransducer:
                     [hyp for hyp in kept_hyps if hyp.score > hyps_max],
                     key=lambda x: x.score,
                 )
-                # print("kept : ", kept_most_prob)
-                # print("length : ", len(kept_most_prob))
-                # print("beam : ", self.beam_size)
 
                 if len(kept_most_prob) >= self.beam_size:
                     kept_hyps = kept_most_prob
