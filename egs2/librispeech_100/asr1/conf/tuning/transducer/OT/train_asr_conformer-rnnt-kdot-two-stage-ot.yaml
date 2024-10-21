@@ -1,15 +1,16 @@
 # general
 batch_type: numel
-batch_bins: 2300000
+batch_bins: 2100000
 accum_grad: 16
 max_epoch: 100 # 100 produces better results.
 patience: none
 init: none
 num_att_plot: 0
-# student_checkpoint: /home/user/Workspace/espnet/egs2/librispeech_100/asr1/exp/asr_train_asr_conformer-rnnt-nonstreaming-kd_raw_en_bpe2048_sp/checkpoint.pth
+student_checkpoint: /home/user/Workspace/espnet/egs2/librispeech_100/asr1/exp/asr_train_asr_conformer-rnnt-nonstreaming-kd_raw_en_bpe2048_sp/checkpoint.pth
 teacher_path: /home/user/Workspace/espnet/egs2/librispeech_100/asr1/exp/asr_train_asr_conformer-rnnt-large_raw_en_bpe2048_sp/valid.loss.ave_10best.pth
 kd_weight: 0.3
 temp_tau: 1.0
+ot_weight: 0.3
 
 model_conf:
     transducer_weight: 1.0
@@ -60,7 +61,7 @@ encoder_conf:
       att_dropout_rate: 0.1
       conv_mod_kernel_size: 31
       num_blocks: 12
-
+      
 decoder: rnn
 decoder_conf:
     rnn_type: lstm
@@ -70,9 +71,9 @@ decoder_conf:
     dropout_rate: 0.1
     embed_dropout_rate: 0.2
 
+
 joint_network_conf:
     joint_space_size: 512
-
 
 # optimizer
 optim: adam
@@ -82,7 +83,6 @@ optim_conf:
 scheduler: warmuplr
 scheduler_conf:
     warmup_steps: 15000
-
 
 # criterion
 val_scheduler_criterion:
@@ -107,15 +107,6 @@ specaug_conf:
     num_freq_mask: 2
     apply_time_mask: true
     time_mask_width_ratio_range:
-    - 0.
+    - 0.0
     - 0.05
     num_time_mask: 10
-    # freq_mask_width_range:
-    # - 0
-    # - 27
-    # num_freq_mask: 2
-    # apply_time_mask: true
-    # time_mask_width_ratio_range:
-    # - 0.
-    # - 40
-    # num_time_mask: 2
