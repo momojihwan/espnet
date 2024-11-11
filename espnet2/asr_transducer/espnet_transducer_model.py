@@ -4,6 +4,7 @@ import logging
 from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple, Union
 
+import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 from packaging.version import parse as V
@@ -227,6 +228,10 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
                 t_len,
                 u_len,
             )
+        # Alignment extract
+        for b in range(speech.shape[0]):
+            if text[b][0] == 2 and text[b][1] == 317 and text[b][2] == 30:
+                self.extract_alignment(joint_out, text, t_len, u_len)
 
         # 5. Auxiliary losses
         loss_ctc, loss_lm = 0.0, 0.0
@@ -286,6 +291,40 @@ class ESPnetASRTransducerModel(AbsESPnetModel):
         loss, stats, weight = force_gatherable((loss, stats, batch_size), loss.device)
 
         return loss, stats, weight
+
+
+    def extract_alignment(
+        self,
+        joint_out,
+        labels,
+        T,
+        U,
+    ):
+        # print("labels : ", labels)
+        # exit()
+        save_path = "/home/user/Workspace/espnet/egs2/librispeech_100/asr1/exp/asr_train_asr_conformer-rnnt_raw_en_bpe2048_sp/origin_alignment.png"
+
+        alignment = torch.log_softmax(joint_out[1], dim=-1).cpu().detach()
+            
+        true_label_probs = torch.zeros(T[1], U[1])
+
+        for t in range(T[1]):
+            for u in range(U[1]):
+                true_label_index = labels[1][u]
+                true_label_probs[t, u] = alignment[t, u, true_label_index]
+        
+        text_labels = [self.token_list[label.item()] for label in labels[1] if label.item() != -1]
+
+        plt.figure(figsize=(10, 6))
+        plt.imshow(true_label_probs.T, aspect='auto', origin='lower', cmap='Blues')
+        plt.colorbar()
+        plt.xlabel('Time steps (T)')
+        plt.ylabel('Text steps (U)')
+        plt.title('Transducer Probability Alignment')
+
+        plt.yticks(ticks=range(U[1]), labels=text_labels)
+        plt.savefig(save_path, format='png', dpi=300)
+        exit()
 
     def collect_feats(
         self,

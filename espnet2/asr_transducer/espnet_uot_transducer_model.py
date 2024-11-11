@@ -34,7 +34,7 @@ else:
         yield
 
 
-class ESPnetASROTGTransducerModel(AbsESPnetModel):
+class ESPnetASRUOTTransducerModel(AbsESPnetModel):
     """ESPnet2ASRTransducerModel module definition.
 
     Args:
@@ -78,6 +78,7 @@ class ESPnetASROTGTransducerModel(AbsESPnetModel):
         joint_network: JointNetwork,
         transducer_weight: float = 1.0,
         ot_weight: float = 0.5,
+        uot_weight: float = 0.5,
         use_k2_pruned_loss: bool = False,
         k2_pruned_loss_args: Dict = {},
         warmup_steps: int = 25000,
@@ -127,6 +128,7 @@ class ESPnetASROTGTransducerModel(AbsESPnetModel):
         self.use_auxiliary_lm_loss = auxiliary_lm_loss_weight > 0
 
         self.ot_weight = ot_weight
+        self.uot_weight = uot_weight
         self.epsilon = 1.0
         self.max_iter = 10
 
@@ -225,6 +227,7 @@ class ESPnetASROTGTransducerModel(AbsESPnetModel):
         loss_wasserstein, aligned_features = self._calc_wasserstein_loss(
             encoder_out,
             decoder_out,
+            uot_weight=self.uot_weight
         )
 
         aligned_features = self.fc(aligned_features)
@@ -454,10 +457,11 @@ class ESPnetASROTGTransducerModel(AbsESPnetModel):
 
     def sinkhorn_knopp(self, cost_matrix, epsilon=1.0, max_iter=3):
         n, m = cost_matrix.shape
-        u = torch.ones(n, device=cost_matrix.device) 
-        v = torch.ones(m, device=cost_matrix.device) 
+        u = torch.ones(n, device=cost_matrix.device)    
+        v = torch.ones(m, device=cost_matrix.device)    
 
-        K = torch.exp(-cost_matrix / epsilon)
+        # Initialize Transport plan
+        K = torch.exp(-cost_matrix / epsilon)   # Regularizing cost matrix
 
         for _ in range(max_iter):
             u = 1.0 / (torch.matmul(K, v))
@@ -492,7 +496,7 @@ class ESPnetASROTGTransducerModel(AbsESPnetModel):
         return cost_matrix
 
 
-    def _calc_wasserstein_loss(self, audio_features, text_features, epsilon=1.0, max_iter=3):
+    def _calc_wasserstein_loss(self, audio_features, text_features, epsilon=1.0, max_iter=3, uot_weight=0.1):
         batch_size, audio_len, feature_dim = audio_features.size()
         _, text_len, _ = text_features.size()
         
@@ -503,15 +507,27 @@ class ESPnetASROTGTransducerModel(AbsESPnetModel):
             # cost_matrix = torch.cdist(audio_features[i], text_features[i])  # (audio_len, text_len)
             cost_matrix = self.compute_cosine_cost_matrix(audio_features[i], text_features[i])
             transport_plan = self.sinkhorn_knopp(cost_matrix, epsilon, max_iter)  # (audio_len, text_len)
+
+            T, U = cost_matrix.shape
+            
+            mu = torch.ones(T, device=cost_matrix.device) / T  # Source distribution : use uniform distribution
+            nu = torch.ones(U, device=cost_matrix.device) / U  # Target distribution : use uniform distribution
             
             # 정렬된 오디오 특징 계산
             aligned_feature = torch.einsum('tu,td, ud -> tud', transport_plan, audio_features[i], text_features[i])
-            aligned_features.append(aligned_feature)  # 위치 정보 제거
+            aligned_features.append(aligned_feature)  
             
             # Wasserstein 손실 계산 with Entropy regularization
             entropy_term = torch.sum(transport_plan * torch.log(transport_plan + 1e-9))
             wasserstein_loss = torch.sum(transport_plan * cost_matrix) - entropy_term
-            total_wasserstein_loss += wasserstein_loss
+
+            # KL divergence penalties for Unbalanced OT cost
+            row_sum = torch.sum(transport_plan, dim=1)
+            col_sum = torch.sum(transport_plan, dim=0)
+            kl_row = torch.sum(row_sum * (torch.log(row_sum / mu) -1) + mu)
+            kl_col = torch.sum(col_sum * (torch.log(col_sum / nu) -1) + nu)
+
+            total_wasserstein_loss += (wasserstein_loss + (uot_weight * (kl_row + kl_col)))
 
         total_wasserstein_loss /= batch_size
         aligned_features = torch.stack(aligned_features, dim=0)  # (batch_size, audio_len, text_len, feature_dim)

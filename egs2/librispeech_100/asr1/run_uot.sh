@@ -11,8 +11,8 @@ valid_set="dev"
 test_sets="test_clean test_other"
 # test_sets="samples"
 
-asr_task="asr_transducer_otg"
-asr_config="conf/tuning/transducer/OT/train_asr_conformer-rnnt-otg.yaml"
+asr_task="asr_transducer_uot"
+asr_config="conf/tuning/transducer/OT/train_asr_conformer-rnnt-uot.yaml"
 inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
 
 ./asr.sh \

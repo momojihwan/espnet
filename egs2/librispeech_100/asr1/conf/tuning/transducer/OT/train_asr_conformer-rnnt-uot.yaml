@@ -2,10 +2,15 @@
 batch_type: numel
 batch_bins: 4600000
 accum_grad: 16
-max_epoch: 101 # 100 produces better results.
+max_epoch: 100 # 100 produces better results.
 patience: none
 init: none
 num_att_plot: 0
+ot_weight: 0.5
+uot_weight: 0.3
+
+unused_parameters: true    # set as true if some params are unused in DDP
+
 
 model_conf:
     transducer_weight: 1.0
@@ -18,7 +23,7 @@ encoder_conf:
       pos_wise_act_type: swish
       conv_mod_act_type: swish
       pos_enc_dropout_rate: 0.2
-      dynamic_chunk_training: True
+      dynamic_chunk_training: False
       short_chunk_threshold: 0.75
       short_chunk_size: 25
       num_left_chunks: 4
@@ -34,7 +39,7 @@ encoder_conf:
       att_dropout_rate: 0.1
       conv_mod_kernel_size: 31
       num_blocks: 12
-      
+
 decoder: rnn
 decoder_conf:
     rnn_type: lstm
@@ -83,3 +88,42 @@ specaug_conf:
     - 0.0
     - 0.05
     num_time_mask: 10
+
+
+# encoder_conf:
+#     main_conf:
+#         pos_wise_layer_type: linear
+#         pos_wise_act_type: swish
+#         pos_enc_layer_type: rel_pos
+#         conv_mod_act_type: swish
+#     input_conf:
+#         block_type: conv2d
+#         conv_size: 256
+#         dropout_rate_pos_enc: 0.1
+#         dim_output: 512
+#         dim_conv: 512
+#     body_conf:
+#       - block_type: conformer
+#         linear_size: 2048
+#         dim_hidden: 512
+#         heads: 8
+#         dropout_rate: 0.1
+#         dropout_rate_pos_enc: 0.1
+#         dropout_rate_pos_wise: 0.1
+#         dropout_rate_att: 0.1
+#         normalize_before: true
+#         macaron_style: true
+#         conv_mod_kernel_size: 31
+#         num_blocks: 12
+
+# decoder: rnn
+# decoder_conf:
+#     rnn_type: lstm
+#     num_layers: 1
+#     dim_embedding: 512
+#     dim_hidden: 512
+#     dropout: 0.1
+#     dropout_embed: 0.2
+
+# joint_network_conf:
+#     dim_joint_space: 640

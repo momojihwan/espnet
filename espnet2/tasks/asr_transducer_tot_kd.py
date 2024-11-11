@@ -3,7 +3,7 @@
 import argparse
 import logging
 import os
-from typing import Callable, Collection, Dict, List, Optional, Tuple
+from typing import Callable, Collection, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -21,16 +21,18 @@ from espnet2.asr_transducer.decoder.rwkv_decoder import RWKVDecoder
 from espnet2.asr_transducer.decoder.stateless_decoder import StatelessDecoder
 from espnet2.asr_transducer.encoder.encoder import Encoder
 from espnet2.asr_transducer.espnet_otg_transducer_model import ESPnetASROTGTransducerModel
+from espnet2.asr_transducer.espnet_kd_transducer_model import ESPnetASRKDTransducerModel
 from espnet2.asr_transducer.joint_network import JointNetwork
 from espnet2.layers.abs_normalize import AbsNormalize
+from espnet2.train.abs_espnet_model import AbsESPnetModel
 from espnet2.layers.global_mvn import GlobalMVN
 from espnet2.layers.utterance_mvn import UtteranceMVN
-from espnet2.tasks.abs_task import AbsTask
+from espnet2.tasks.abs_tot_kd_task import AbsTask
 from espnet2.text.phoneme_tokenizer import g2p_choices
 from espnet2.train.class_choices import ClassChoices
 from espnet2.train.collate_fn import CommonCollateFn
 from espnet2.train.preprocessor import CommonPreprocessor
-from espnet2.train.trainer import Trainer
+from espnet2.train.tot_kd_trainer import Trainer
 from espnet2.utils.get_default_kwargs import get_default_kwargs
 from espnet2.utils.nested_dict_action import NestedDictAction
 from espnet2.utils.types import float_or_none, int_or_none, str2bool, str_or_none
@@ -111,16 +113,34 @@ class ASRTransducerTask(AbsTask):
             help="Integer-string mapper for tokens.",
         )
         group.add_argument(
+            "--teacher_path",
+            type=str_or_none,
+            default=None,
+            help="Teacher model checkpoint path.",
+        )
+        group.add_argument(
+            "--student_checkpoint",
+            type=str_or_none,
+            default=None,
+            help="Student model checkpoint path.",
+        )
+        group.add_argument(
+            "--kd_weight",
+            type=int_or_none,
+            default=0.3,
+            help="The knowledge distillation vaule.",
+        )
+        group.add_argument(
+            "--temp_tau",
+            type=int_or_none,
+            default=1.0,
+            help="The temperature scaling vaule.",
+        )
+        group.add_argument(
             "--input_size",
             type=int_or_none,
             default=None,
             help="The number of dimensions for input features.",
-        )
-        group.add_argument(
-            "--ot_weight",
-            type=int_or_none,
-            default=0.5,
-            help="The optimal transport value.",
         )
         group.add_argument(
             "--init",
@@ -133,6 +153,12 @@ class ASRTransducerTask(AbsTask):
             action=NestedDictAction,
             default=get_default_kwargs(ESPnetASROTGTransducerModel),
             help="The keyword arguments for the model class.",
+        )
+        group.add_argument(
+            "--teacher_encoder_conf",
+            action=NestedDictAction,
+            default={},
+            help="The keyword arguments for the encoder class.",
         )
         group.add_argument(
             "--encoder_conf",
@@ -161,6 +187,12 @@ class ASRTransducerTask(AbsTask):
             default="bpe",
             choices=["bpe", "char", "word", "phn"],
             help="The type of tokens to use during tokenization.",
+        )
+        group.add_argument(
+            "--ot_weight",
+            type=int_or_none,
+            default=0.5,
+            help="The optimal transport value.",
         )
         group.add_argument(
             "--bpemodel",
@@ -341,11 +373,16 @@ class ASRTransducerTask(AbsTask):
         return retval
 
     @classmethod
-    def build_model(cls, args: argparse.Namespace, teacher=False) -> ESPnetASROTGTransducerModel:
+    def build_model(
+        cls, 
+        teacher_model: Union[None, AbsESPnetModel],
+        args: argparse.Namespace
+    ) -> ESPnetASRKDTransducerModel:
         """Required data depending on task mode.
 
         Args:
             cls: ASRTransducerTask object.
+            teacher_model: Teacher model.
             args: Task arguments.
 
         Return:
@@ -372,6 +409,7 @@ class ASRTransducerTask(AbsTask):
             )
 
         logging.info(f"Vocabulary size: {vocab_size }")
+        
 
         # 1. frontend
         if args.input_size is None:
@@ -399,11 +437,7 @@ class ASRTransducerTask(AbsTask):
             normalize = None
 
         # 4. Encoder
-        if teacher:
-            encoder = Encoder(input_size, **args.teacher_encoder_conf)
-        else:
-            encoder = Encoder(input_size, **args.encoder_conf)
-
+        encoder = Encoder(input_size, **args.encoder_conf)
         encoder_output_size = encoder.output_size
 
         # 5. Decoder
@@ -422,9 +456,9 @@ class ASRTransducerTask(AbsTask):
             decoder_output_size,
             **args.joint_network_conf,
         )
-
+        
         # 7. Build model
-        model = ESPnetASROTGTransducerModel(
+        model = ESPnetASRKDTransducerModel(
             vocab_size=vocab_size,
             token_list=token_list,
             frontend=frontend,
@@ -432,8 +466,10 @@ class ASRTransducerTask(AbsTask):
             normalize=normalize,
             encoder=encoder,
             decoder=decoder,
-            ot_weight=args.ot_weight,
             joint_network=joint_network,
+            teacher_model=teacher_model,
+            kd_weight=args.kd_weight,
+            temp_tau=args.temp_tau,
             **args.model_conf,
         )
 

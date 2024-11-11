@@ -10,7 +10,7 @@ valid_set="dev"
 test_sets="test_clean test_other"
 
 asr_task="asr_transducer_kd"
-asr_config="conf/tuning/transducer/KD/train_asr_conformer-rnnt-nonstreaming-kd.yaml"
+asr_config="conf/tuning/transducer/KD/train_asr_conformer-rnnt-nonstreaming-kdot.yaml"
 inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
 
 ./asr.sh \

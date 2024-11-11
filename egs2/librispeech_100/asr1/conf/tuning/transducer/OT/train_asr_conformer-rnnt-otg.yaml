@@ -2,11 +2,11 @@
 batch_type: numel
 batch_bins: 4600000
 accum_grad: 16
-max_epoch: 100 # 100 produces better results.
+max_epoch: 101 # 100 produces better results.
 patience: none
 init: none
 num_att_plot: 0
-ot_weight: 0.2
+ot_weight: 0.6
 
 unused_parameters: true    # set as true if some params are unused in DDP
 

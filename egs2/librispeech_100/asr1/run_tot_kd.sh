@@ -6,13 +6,11 @@ set -u
 set -o pipefail
 
 train_set="train_clean_100"
-# train_set="samples"
 valid_set="dev"
 test_sets="test_clean test_other"
-# test_sets="samples"
 
-asr_task="asr_transducer_otg"
-asr_config="conf/tuning/transducer/OT/train_asr_conformer-rnnt-otg.yaml"
+asr_task="asr_transducer_tot_kd"
+asr_config="conf/tuning/transducer/KD/train_asr_conformer-rnnt-nonstreaming-tot-kd.yaml"
 inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
 
 ./asr.sh \
@@ -22,8 +20,8 @@ inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
     --inference_nj 16 \
     --nbpe 2048 \
     --max_wav_duration 30 \
-    --asr_task "${asr_task}" \
     --speed_perturb_factors "0.9 1.0 1.1" \
+    --asr_task "${asr_task}" \
     --feats_type raw \
     --use_lm false \
     --asr_config "${asr_config}" \
@@ -33,5 +31,4 @@ inference_config="conf/tuning/transducer/decode_asr_transducer.yaml"
     --test_sets "${test_sets}" \
     --lm_train_text "data/${train_set}/text" \
     --bpe_train_text "data/${train_set}/text" "$@" \
-    
     # --display_hypotheses false
